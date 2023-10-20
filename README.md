@@ -1,2 +1,2 @@
 # pipetower-cli
-The Pipetower CLI
+A command-line tool for Pipetower
