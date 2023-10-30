@@ -11,9 +11,9 @@
                 </td>
                 <td class="pl-1">
                     @if($server->connected)
-                        <span class="text-green-500">✔ connected</span>
+                        <span class="text-green-500">● connected</span>
                     @else
-                        <span class="text-gray-600">✖ not connected</span>
+                        <span class="text-gray-600">● connected</span>
                     @endif
                 </td>
             </tr>
