@@ -1,5 +1,5 @@
 <x-layouts.app>
-    <div class="mb-1 font-bold">Showing {{ count($servers) }} servers</div>
+    <div class="mb-1 font-bold">Showing {{ $meta['from'] }} to {{ $meta['to'] }} servers</div>
     <table style="compact">
         @foreach($servers as $server)
             <tr>

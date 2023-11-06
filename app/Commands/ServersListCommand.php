@@ -19,6 +19,26 @@ class ServersListCommand extends Command
      */
     public function handle(Pipetower $pt): void
     {
-        render(view('servers-list', ['servers' => $pt->servers->all()]));
+        $this->list($pt);
+    }
+
+    /**
+     * Load the servers and display them
+     */
+    private function list(Pipetower $pt, int $page = 1): void
+    {
+        $response = $pt->servers->all(['page' => $page]);
+
+        render(view('servers-list', [
+            'servers' => $response['data'],
+            'meta' => $response['meta'],
+        ]));
+
+        if ($response['meta']['has_more']) {
+            $remaining = $response['meta']['total'] - $response['meta']['to'];
+            if ($this->confirm("$remaining more server(s) available. Do you want to list the next ones?", true)) {
+                $this->list($pt, $page + 1);
+            }
+        }
     }
 }
