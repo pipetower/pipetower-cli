@@ -13,7 +13,7 @@
                     @if($server->connected)
                         <span class="text-green-500">● connected</span>
                     @else
-                        <span class="text-gray-600">● connected</span>
+                        <span class="text-gray-600">● disconnected</span>
                     @endif
                 </td>
             </tr>
