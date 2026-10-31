@@ -1,0 +1,13 @@
+ ▶ Deploy App  Workflow · #30denr · 2 servers                                                  0:30
+
+ ⠹ prod  5.75.144.227                                                                 running · 30s
+   ⠹ Deploy app                                                                                 30s
+     ✓ Create release dir                                                                        1s
+     ⊘ Clear cache  conditions not met                                                           0s
+     ⠹ Clone git repo                                                                           29s
+       │ Cloning into '.'...
+       │ Receiving objects:  54% (671/1241)
+     ○ Install dependencies
+   ○ Restart PHP
+ ○ staging  10.0.0.4                                                                        pending
+   ○ Deploy app

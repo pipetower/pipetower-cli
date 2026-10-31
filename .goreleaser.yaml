@@ -1,0 +1,64 @@
+version: 2
+
+project_name: pt
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: pt
+    main: ./cmd/pt
+    binary: pt
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/pipetower/pipetower-cli/internal/version.Version={{ .Version }}
+      - -X github.com/pipetower/pipetower-cli/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/pipetower/pipetower-cli/internal/version.Date={{ .Date }}
+
+archives:
+  - id: pt
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "pt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude: ["^docs:", "^test:", "^chore:"]
+
+nfpms:
+  - id: pt
+    package_name: pipetower-cli
+    file_name_template: "pt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    vendor: Pipetower
+    homepage: https://pipetower.com
+    maintainer: Pipetower <email@pipetower.com>
+    description: Run actions and workflows on your servers and follow them in real time.
+    license: Proprietary
+    formats: [deb, rpm]
+    bindir: /usr/bin
+
+homebrew_casks:
+  - name: pt
+    repository:
+      owner: pipetower
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://pipetower.com
+    description: Run actions and workflows on your servers and follow them in real time.
+    binaries: [pt]

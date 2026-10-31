@@ -1,0 +1,14 @@
+
+ ✗  No API token found
+
+    pt authenticates with an API token from a .pipetower file.
+
+    Looked in $PIPETOWER_URL / $PIPETOWER_TOKEN and:
+      ~/.pipetower
+      /nonexistent/.pipetower
+      /.pipetower
+
+    Create a token   <your Pipetower URL>/account  →  API tokens
+    Save it          printf 'PIPETOWER_TOKEN=<token>\n' >> ~/.pipetower
+    Protect it       chmod 600 ~/.pipetower
+

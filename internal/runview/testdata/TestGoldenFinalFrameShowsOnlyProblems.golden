@@ -1,0 +1,15 @@
+ ▶ Deploy App  Workflow · #30denr · 2 servers                                                  0:09
+
+ ✗ prod  5.75.144.227                                                                   failed · 9s
+   ✗ Deploy app                                                                                  9s
+     ✓ Create release dir                                                                        1s
+     ⊘ Clear cache  conditions not met                                                           0s
+     ✗ Clone git repo  exit 128                                                                  8s
+       │ Cloning into '.'...
+       │ fatal: repository not found
+     ◌ Install dependencies
+   ◌ Restart PHP
+ ✓ staging  10.0.0.4                                                                successful · 0s
+
+ ✗ Failed  in 9s · 1 of 2 servers succeeded
+   Log of prod: pt runs log 0r76v1

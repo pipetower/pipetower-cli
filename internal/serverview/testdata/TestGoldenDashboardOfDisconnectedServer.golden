@@ -1,0 +1,10 @@
+╭────────────────────────────────────────────────────────────────────────────╮
+│  db 1                                                      ○ Disconnected  │
+│  10.0.0.1:2222                                                             │
+│                                                                            │
+│  Not connected, so there are no metrics.                                   │
+│  Connect it with pt server connect "db 1"                                  │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+  Latest runs
+  No runs yet
