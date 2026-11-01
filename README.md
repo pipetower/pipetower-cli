@@ -4,9 +4,9 @@ Run actions and workflows on your servers and follow every step live, check serv
 and open shared terminal sessions — from your terminal.
 
 ```
-pt run "Deploy App" --server prod -v branch=main
-pt server show prod --watch
-pt ssh prod
+pt workflow run "Deploy App" --server prod -v branch=main
+pt server view prod --watch
+pt terminal open prod
 ```
 
 ## Install
@@ -49,32 +49,41 @@ others, lies unignored in a git repository, or is ignored because it has a URL b
 
 ## Commands
 
+Every group is a singular noun, every verb means the same everywhere, and there is exactly one
+command for each task (no aliases).
+
 | Command | |
 |---|---|
-| `pt run <action-or-workflow> -s <server>…` | run and follow live (`-v name=value`, `--detach`, `--output-mode full`, `--quiet`) |
-| `pt runs list \| show <run> [-f] \| cancel <run> \| log <run-or-execution>` | inspect, follow, terminate and export runs |
-| `pt ssh <server>` · `pt terminal ls \| open \| join` | shared terminal sessions |
-| `pt server list \| show [--watch] \| connect \| disconnect \| vars \| runs` | servers and their health |
-| `pt action …` · `pt workflow …` | `list`, `show`, `run` |
-| `pt pipe list \| show` · `pt template list \| show` · `pt team list` | |
+| `pt action list \| view \| run` | actions: `run <action> -s <server>…` runs one and follows it live |
+| `pt workflow list \| view \| run` | workflows, the same as actions |
+| `pt run list \| view \| watch \| cancel` | runs: filter with `--server`, `--action`, `--workflow`, `--pipe`, `--status`; `view --log` prints the log |
+| `pt server list \| view \| connect \| disconnect` | servers and their health, `view --watch` keeps the dashboard live |
+| `pt variable list` | your variables, or with `--server` / `--team` those of a server or team |
+| `pt terminal list \| open \| join` | shared terminal sessions |
+| `pt pipe list \| view` · `pt template list \| view` · `pt team list \| view` | |
 | `pt status` | check configuration, token and the real-time gateway |
 | `pt api <method> <path> [-d json]` | raw authenticated API request |
+
+Running takes `-s <server>` (repeatable), `-v name=value` (missing variables are asked for),
+`--detach`, `--full` (complete output instead of the step tree) and `--quiet`. Every `view`
+accepts `--web` to open the item in the web app, every list of named items `--search`.
+`pt version` prints the version.
 
 Servers can be given by name, id or `tag:<tag>` (all servers with that tag). Ambiguous names
 open a picker in a terminal and fail with suggestions in scripts.
 
-Global flags: `-o table|json|yaml`, `--no-input`, `--no-color` (or `NO_COLOR`), `--team`.
+Global flags: `-o table|json|yaml`, `--no-input`, `--no-color` (or `NO_COLOR`), `--team`, `-h` (help).
 
 ### Live runs
 
-`pt run` shows a live tree of every server, workflow step and action step with the tail of the
-running step's output. `Ctrl+C` asks whether to terminate the run or to detach from it
-(`pt runs show <run> -f` follows it again). When the output is redirected, pt writes a
+`pt action run` and `pt workflow run` show a live tree of every server, workflow step and action
+step with the tail of the running step's output. `Ctrl+C` asks whether to terminate the run or to
+detach from it (`pt run watch <run>` follows it again). When the output is redirected, pt writes a
 line-oriented log instead — still in real time.
 
 ### Terminal sessions
 
-`pt ssh <server>` opens a shared session: teammates can watch it or get control from the web
+`pt terminal open <server>` opens a shared session: teammates can watch it or get control from the web
 or with `pt terminal join <session>`. After Enter, type `~.` to detach, `~c` to request control,
 `~e` to end the session, `~?` for help.
 

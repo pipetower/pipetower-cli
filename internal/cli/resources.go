@@ -8,28 +8,30 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
+	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
 // newTeamCommand groups the team commands.
 func newTeamCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "team", Short: "List your teams and their members"}
-	cmd.AddCommand(newTeamListCommand(a))
+	cmd := &cobra.Command{Use: "team", Short: "List and view your teams and their members"}
+	cmd.AddCommand(newTeamListCommand(a), newViewCommand(a, resolve.KindTeam, "View the members of a team",
+		(*resolve.Resolver).Team, func(t api.Team) string { return t.ID }, renderTeam))
 	return cmd
 }
 
 // newTeamListCommand lists the teams of the user.
 func newTeamListCommand(a *App) *cobra.Command {
 	var page pageOptions
+	var search string
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List your teams",
-		Args:    args(),
+		Use:   "list",
+		Short: "List your teams",
+		Args:  args(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return showList(cmd.Context(), a, listing[api.Team]{
 				path:    api.Teams,
-				opts:    page.options(),
+				opts:    searchOptions(page, search),
 				headers: []string{"TEAM", "MEMBERS", "ID"},
 				row: func(t api.Team) []string {
 					return []string{ui.Bold.Render(t.Name), memberNames(t.Members), ui.Faint.Render(t.ID)}
@@ -39,23 +41,24 @@ func newTeamListCommand(a *App) *cobra.Command {
 		},
 	}
 	addPageFlags(cmd, &page)
+	addSearchFlag(cmd, &search, "teams")
 	return cmd
 }
 
 // newPipeCommand groups the pipe commands.
 func newPipeCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "pipe", Short: "List and inspect pipes (automations)"}
+	cmd := &cobra.Command{Use: "pipe", Short: "List and view pipes (automations)"}
 
 	var page pageOptions
+	var search string
 	list := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List pipes",
-		Args:    args(),
+		Use:   "list",
+		Short: "List pipes",
+		Args:  args(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return showList(cmd.Context(), a, listing[api.Pipe]{
 				path:    api.Pipes,
-				opts:    page.options(),
+				opts:    searchOptions(page, search),
 				headers: []string{"PIPE", "TRIGGER", "STEPS", "ACTIVE", "ID"},
 				row: func(p api.Pipe) []string {
 					return []string{ui.Bold.Render(p.Name), trigger(p.Trigger), fmt.Sprint(len(p.Steps)), active(p.Active), ui.Faint.Render(p.ID)}
@@ -66,42 +69,27 @@ func newPipeCommand(a *App) *cobra.Command {
 		},
 	}
 	addPageFlags(list, &page)
+	addSearchFlag(list, &search, "pipes")
 
-	show := &cobra.Command{
-		Use:   "show <pipe>",
-		Short: "Show the trigger and steps of a pipe",
-		Args:  args("pipe"),
-		RunE: func(cmd *cobra.Command, argv []string) error {
-			resolver, err := a.Resolver(cmd.Context())
-			if err != nil {
-				return err
-			}
-			pipe, err := resolver.Pipe(cmd.Context(), argv[0])
-			if err != nil {
-				return err
-			}
-			return showOne(cmd.Context(), a, pipe, api.Show(api.Pipes, pipe.ID), renderPipe)
-		},
-	}
-
-	cmd.AddCommand(list, show)
+	cmd.AddCommand(list, newViewCommand(a, resolve.KindPipe, "View the trigger and steps of a pipe",
+		(*resolve.Resolver).Pipe, func(p api.Pipe) string { return p.ID }, renderPipe))
 	return cmd
 }
 
 // newTemplateCommand groups the template commands.
 func newTemplateCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "template", Short: "List and print file templates"}
+	cmd := &cobra.Command{Use: "template", Short: "List and view file templates"}
 
 	var page pageOptions
+	var search string
 	list := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List templates",
-		Args:    args(),
+		Use:   "list",
+		Short: "List templates",
+		Args:  args(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return showList(cmd.Context(), a, listing[api.Template]{
 				path:    api.Templates,
-				opts:    page.options(),
+				opts:    searchOptions(page, search),
 				headers: []string{"TEMPLATE", "FILE", "UPDATED", "ID"},
 				row: func(t api.Template) []string {
 					return []string{ui.Bold.Render(t.Name), ui.Code.Render(t.FileName), ui.Muted.Render(ui.Ago(t.UpdatedAt, time.Now())), ui.Faint.Render(t.ID)}
@@ -112,25 +100,10 @@ func newTemplateCommand(a *App) *cobra.Command {
 		},
 	}
 	addPageFlags(list, &page)
+	addSearchFlag(list, &search, "templates")
 
-	show := &cobra.Command{
-		Use:   "show <template>",
-		Short: "Print the content of a template",
-		Args:  args("template"),
-		RunE: func(cmd *cobra.Command, argv []string) error {
-			resolver, err := a.Resolver(cmd.Context())
-			if err != nil {
-				return err
-			}
-			template, err := resolver.Template(cmd.Context(), argv[0])
-			if err != nil {
-				return err
-			}
-			return showOne(cmd.Context(), a, template, api.Show(api.Templates, template.ID), renderTemplate)
-		},
-	}
-
-	cmd.AddCommand(list, show)
+	cmd.AddCommand(list, newViewCommand(a, resolve.KindTemplate, "View the content of a template",
+		(*resolve.Resolver).Template, func(t api.Template) string { return t.ID }, renderTemplate))
 	return cmd
 }
 
@@ -146,7 +119,7 @@ func renderPipe(p api.Pipe) string {
 	if len(rows) == 0 {
 		lines = append(lines, ui.Muted.Render("   none"))
 	} else {
-		lines = append(lines, indentBlock(ui.Table([]string{"#", "TYPE", "EVENT"}, rows), "  "))
+		lines = append(lines, indent(ui.Table([]string{"#", "TYPE", "EVENT"}, rows), "  "))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -176,4 +149,18 @@ func memberNames(members []api.Member) string {
 		names[i] = m.Name + ui.Faint.Render(" ("+m.Role+")")
 	}
 	return strings.Join(names, ", ")
+}
+
+// renderTeam renders the members of a team with their roles.
+func renderTeam(t api.Team) string {
+	rows := make([][]string, len(t.Members))
+	for i, m := range t.Members {
+		twoFactor := ui.Faint.Render("–")
+		if m.TwoFactor {
+			twoFactor = ui.Success.Render("✓")
+		}
+		rows[i] = []string{ui.Bold.Render(m.Name), m.Email, m.Role, twoFactor}
+	}
+	return "\n " + ui.Title.Render(t.Name) + "  " + ui.Muted.Render("Team · "+t.ID) + "\n\n" +
+		indent(ui.Table([]string{"MEMBER", "EMAIL", "ROLE", "2FA"}, rows), "  ") + "\n"
 }

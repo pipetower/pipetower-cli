@@ -48,12 +48,11 @@ func TestRawEndpoint(t *testing.T) {
 
 func TestExitCode(t *testing.T) {
 	cases := map[error]int{
-		nil:              fault.ExitOK,
-		context.Canceled: fault.ExitInterrupted,
-		errors.New(`unknown command "x" for "pt"`): fault.ExitUsage,
-		&fault.Silent{Code: 1}:                     fault.ExitFailure,
-		&api.Error{Status: 404}:                    fault.ExitAPI,
-		errors.New("boom"):                         fault.ExitFailure,
+		nil:                     fault.ExitOK,
+		context.Canceled:        fault.ExitInterrupted,
+		&fault.Silent{Code: 1}:  fault.ExitFailure,
+		&api.Error{Status: 404}: fault.ExitAPI,
+		errors.New("boom"):      fault.ExitFailure,
 	}
 	for err, want := range cases {
 		if got := ExitCode(err); got != want {

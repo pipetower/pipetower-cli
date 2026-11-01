@@ -47,7 +47,7 @@ func newAPICommand(a *App) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&data, "data", "d", "", "JSON request body")
+	cmd.Flags().StringVarP(&data, "data", "d", "", "request body as JSON")
 	return cmd
 }
 
@@ -81,4 +81,28 @@ func newVersionCommand(a *App) *cobra.Command {
 func parseQuery(query string) url.Values {
 	values, _ := url.ParseQuery(query)
 	return values
+}
+
+// newCompletionCommand prints the shell completion script.
+func newCompletionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:     "completion <shell>",
+		Short:   "Print the shell completion script (bash, zsh, fish, powershell)",
+		Example: "  source <(pt completion bash)\n  pt completion zsh > \"${fpath[1]}/_pt\"",
+		Args:    args("shell"),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			root, out := cmd.Root(), cmd.OutOrStdout()
+			switch argv[0] {
+			case "bash":
+				return root.GenBashCompletionV2(out, true)
+			case "zsh":
+				return root.GenZshCompletion(out)
+			case "fish":
+				return root.GenFishCompletion(out, true)
+			case "powershell":
+				return root.GenPowerShellCompletionWithDesc(out)
+			}
+			return usageError("Unknown shell “"+argv[0]+"”", "Use bash, zsh, fish or powershell.")
+		},
+	}
 }

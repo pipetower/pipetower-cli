@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
+	"github.com/pipetower/pipetower-cli/internal/browser"
 	"github.com/pipetower/pipetower-cli/internal/config"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/gateway"
@@ -43,6 +44,8 @@ type App struct {
 	cfg    *config.Config
 	client *api.Client
 	teamID string
+	// openURL opens a page in the browser (replaced in tests).
+	openURL func(url string) error
 }
 
 // NewApp creates the app for the running process.
@@ -52,7 +55,7 @@ func NewApp() *App {
 
 // NewAppWith creates an app with the given environment and streams (e.g. in tests).
 func NewAppWith(env config.Env, newIO IOFactory) *App {
-	return &App{IO: newIO(false, false), env: env, newIO: newIO}
+	return &App{IO: newIO(false, false), env: env, newIO: newIO, openURL: browser.Open}
 }
 
 // setup applies the parsed global flags.
@@ -175,4 +178,20 @@ func (a *App) PrintValue(value any) error {
 		return err
 	}
 	return a.PrintRaw(raw)
+}
+
+// openWeb opens the page of the instance (e.g. "runs/30denr") in the browser, or prints its URL
+// when no browser can be started.
+func (a *App) openWeb(path string) error {
+	cfg, err := a.Config()
+	if err != nil {
+		return err
+	}
+	url := cfg.URL + "/" + path
+	if err := a.openURL(url); err != nil {
+		a.IO.Println(url)
+		return nil
+	}
+	a.IO.Errorln(ui.Muted.Render(" Opening ") + url + ui.Muted.Render(" in your browser."))
+	return nil
 }

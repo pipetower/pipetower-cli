@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/spf13/cobra"
+
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
@@ -26,6 +28,13 @@ type listing[T any] struct {
 type pageOptions struct {
 	limit int
 	page  int
+}
+
+// searchOptions converts the page flags and the search into list options.
+func searchOptions(page pageOptions, search string) api.ListOptions {
+	opts := page.options()
+	opts.Search = search
+	return opts
 }
 
 // options converts the flags into list options.
@@ -121,4 +130,37 @@ func orNotFound(err error, kind resolve.Kind, arg string) error {
 		return &resolve.NotFoundError{Kind: kind, Arg: arg}
 	}
 	return err
+}
+
+// addWebFlag adds --web, which opens the viewed item in the web app instead.
+func addWebFlag(cmd *cobra.Command, web *bool) {
+	cmd.Flags().BoolVarP(web, "web", "w", false, "open it in the web app")
+}
+
+// newViewCommand builds the view command of a kind: the item rendered in the terminal, as raw data
+// with --output, or opened in the web app with --web.
+func newViewCommand[T any](a *App, kind resolve.Kind, short string, find func(*resolve.Resolver, context.Context, string) (T, error), id func(T) string, render func(T) string) *cobra.Command {
+	var web bool
+	cmd := &cobra.Command{
+		Use:        "view <" + kind.Singular + ">",
+		Short:      short,
+		SuggestFor: []string{"show"},
+		Args:       args(kind.Singular),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			resolver, err := a.Resolver(cmd.Context())
+			if err != nil {
+				return err
+			}
+			item, err := find(resolver, cmd.Context(), argv[0])
+			if err != nil {
+				return err
+			}
+			if web {
+				return a.openWeb(kind.Resource + "/" + id(item))
+			}
+			return showOne(cmd.Context(), a, item, api.Show(kind.Resource, id(item)), render)
+		},
+	}
+	addWebFlag(cmd, &web)
+	return cmd
 }

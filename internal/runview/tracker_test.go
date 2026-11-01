@@ -159,7 +159,7 @@ func TestFinalRenderShowsFailureOutput(t *testing.T) {
 
 	out := ansi.Strip(renderRun(tracker, time.Now(), "", 100, modeFinal) + renderSummary(tracker.Run))
 
-	for _, want := range []string{"✗ Clone git repo  exit 128", "│ fatal: repository not found", "✗ Failed  in", "0 of 1 server succeeded", "pt runs log e1"} {
+	for _, want := range []string{"✗ Clone git repo  exit 128", "│ fatal: repository not found", "✗ Failed  in", "0 of 1 server succeeded", "pt run view r1 --log --server prod"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}

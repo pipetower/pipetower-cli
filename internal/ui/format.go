@@ -133,3 +133,11 @@ func Capitalize(text string) string {
 	}
 	return strings.ToUpper(text[:1]) + text[1:]
 }
+
+// Arg renders a name as command line argument for copy-pasting, quoted if it contains spaces.
+func Arg(name string) string {
+	if strings.ContainsAny(name, " \t") {
+		return "\"" + name + "\""
+	}
+	return name
+}

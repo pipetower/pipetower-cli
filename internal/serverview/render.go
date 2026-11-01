@@ -123,7 +123,7 @@ func measured(m *api.Metrics, now time.Time) string {
 func noMetrics(server api.Server) string {
 	if !server.Connected {
 		return ui.Muted.Render("Not connected, so there are no metrics.") + "\n" +
-			ui.Muted.Render("Connect it with ") + ui.Code.Render("pt server connect "+quote(server.Name))
+			ui.Muted.Render("Connect it with ") + ui.Code.Render("pt server connect "+ui.Arg(server.Name))
 	}
 	return ui.Muted.Render("No metrics measured yet, they appear within a minute.")
 }
@@ -192,12 +192,4 @@ func truncate(text string, length int) string {
 // indent indents every line by two spaces.
 func indent(text string) string {
 	return "  " + strings.ReplaceAll(text, "\n", "\n  ")
-}
-
-// quote wraps names with spaces in quotes for copy-pasting.
-func quote(name string) string {
-	if strings.ContainsAny(name, " \t") {
-		return "\"" + name + "\""
-	}
-	return name
 }

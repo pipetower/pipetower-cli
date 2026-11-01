@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
@@ -31,8 +30,8 @@ func (e *NotFoundError) Problem() fault.Problem {
 	if len(e.Suggestions) > 0 {
 		p.Detail = "Did you mean:\n" + bullets(e.Suggestions)
 		p.Hints = []fault.Hint{{Label: "Use the exact name or id"}}
-	} else if list := listCommand(e.Kind); list != "" {
-		p.Hints = []fault.Hint{{Label: "See all " + e.Kind.Plural, Value: list}}
+	} else {
+		p.Hints = []fault.Hint{{Label: "See all " + e.Kind.Plural, Value: listCommand(e.Kind)}}
 	}
 
 	return p
@@ -62,15 +61,7 @@ func (e *AmbiguousError) Problem() fault.Problem {
 
 // listCommand is the command which lists the kind.
 func listCommand(kind Kind) string {
-	switch kind.Resource {
-	case "":
-		return "pt action list  ·  pt workflow list"
-	case api.Runs:
-		return "pt runs list"
-	case "terminal-sessions":
-		return "pt terminal ls"
-	}
-	return "pt " + kind.Singular + " list"
+	return "pt " + kind.Command + " list"
 }
 
 // bullets renders a list of items.

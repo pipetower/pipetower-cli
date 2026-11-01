@@ -15,25 +15,13 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
-// Command groups shown in the help.
-const (
-	groupRun       = "run"
-	groupResources = "resources"
-	groupMore      = "more"
-)
-
 // NewRootCommand builds the command tree of pt.
 func NewRootCommand(a *App) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "pt",
-		Short: "Run actions and workflows on your servers, in real time",
-		Long: "pt is the command line of Pipetower: run actions and workflows on your servers and follow\n" +
-			"them live, check server health, and open shared terminal sessions.\n\n" +
-			"pt reads PIPETOWER_URL and PIPETOWER_TOKEN from a .pipetower file in this directory,\n" +
-			"a parent directory or your home directory (or from the environment).",
+		Use: "pt",
 		Example: "  pt server list\n" +
-			"  pt run \"Deploy App\" --server prod -v branch=main\n" +
-			"  pt ssh prod",
+			"  pt workflow run \"Deploy App\" -s prod -v branch=main\n" +
+			"  pt terminal open prod",
 		PersistentPreRunE: func(*cobra.Command, []string) error { return a.setup() },
 	}
 
@@ -41,56 +29,26 @@ func NewRootCommand(a *App) *cobra.Command {
 	pf.StringVarP(&a.flags.output, "output", "o", FormatTable, "output format: table, json or yaml")
 	pf.BoolVar(&a.flags.noInput, "no-input", false, "never prompt, fail instead")
 	pf.BoolVar(&a.flags.noColor, "no-color", false, "disable colors (also via NO_COLOR)")
-	pf.StringVar(&a.flags.team, "team", "", "only show resources of this team (id or name)")
+	pf.StringVar(&a.flags.team, "team", "", "only resources of this team (name or id)")
+	pf.BoolP("help", "h", false, "show the help")
 
-	root.AddGroup(
-		&cobra.Group{ID: groupRun, Title: "Run and follow"},
-		&cobra.Group{ID: groupResources, Title: "Resources"},
-		&cobra.Group{ID: groupMore, Title: "More"},
-	)
 	root.AddCommand(
-		inGroup(groupRun, newRunCommand(a), newRunsCommand(a), newSSHCommand(a), newTerminalCommand(a))...,
+		newActionCommand(a), newWorkflowCommand(a), newRunCommand(a), newTerminalCommand(a),
+		newServerCommand(a), newVariableCommand(a), newPipeCommand(a), newTemplateCommand(a), newTeamCommand(a),
+		newStatusCommand(a), newAPICommand(a), newVersionCommand(a), newCompletionCommand(),
 	)
-	root.AddCommand(
-		inGroup(groupResources, newServerCommand(a), newActionCommand(a), newWorkflowCommand(a), newPipeCommand(a), newTemplateCommand(a), newTeamCommand(a))...,
-	)
-	root.AddCommand(
-		inGroup(groupMore, newStatusCommand(a), newAPICommand(a), newVersionCommand(a))...,
-	)
-	root.AddCommand(listAliases(a)...)
-	root.SetHelpCommandGroupID(groupMore)
-	root.SetCompletionCommandGroupID(groupMore)
+	// one way for each task: --help instead of a help command, our completion command instead of cobra's
+	root.SetHelpCommand(&cobra.Command{Hidden: true})
+	root.SetHelpFunc(helpFunc(a))
+	root.SilenceErrors, root.SilenceUsage = true, true
+	root.CompletionOptions.DisableDefaultCmd = true
+	forEachCommand(root, rejectUnknownSubcommand)
+	showLogo(a, root)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
-		return usageError(ui.Capitalize(err.Error()), "See: "+cmd.CommandPath()+" --help")
+		return usageProblem(cmd, ui.Capitalize(err.Error()))
 	})
 
 	return root
-}
-
-// inGroup assigns commands to a help group.
-func inGroup(group string, commands ...*cobra.Command) []*cobra.Command {
-	for _, cmd := range commands {
-		cmd.GroupID = group
-	}
-	return commands
-}
-
-// listAliases are hidden plural shortcuts: pt servers = pt server list.
-func listAliases(a *App) []*cobra.Command {
-	aliases := map[string]func(*App) *cobra.Command{
-		"servers":   newServerListCommand,
-		"actions":   func(a *App) *cobra.Command { return newRunnableListCommand(a, actionKind) },
-		"workflows": func(a *App) *cobra.Command { return newRunnableListCommand(a, workflowKind) },
-		"teams":     newTeamListCommand,
-	}
-
-	commands := make([]*cobra.Command, 0, len(aliases))
-	for name, build := range aliases {
-		cmd := build(a)
-		cmd.Use, cmd.Hidden = name, true
-		commands = append(commands, cmd)
-	}
-	return commands
 }
 
 // HandleError renders an error on stderr, already shown or canceled errors stay quiet.
@@ -101,13 +59,8 @@ func (a *App) HandleError(w io.Writer, err error) {
 	_, _ = fmt.Fprint(w, ui.RenderProblem(a.problemOf(err)))
 }
 
-// problemOf explains an error: usage errors of cobra get a help hint, errors caused by the
-// configuration tell where the URL and the token came from.
+// problemOf explains an error, errors caused by the configuration tell where the URL and the token came from.
 func (a *App) problemOf(err error) fault.Problem {
-	if isUsage(err) {
-		return fault.Problem{Title: ui.Capitalize(err.Error()), Hints: []fault.Hint{{Label: "See", Value: "pt --help"}}, Code: fault.ExitUsage}
-	}
-
 	problem := ui.ProblemOf(err)
 	if a.cfg != nil && isConfigurationProblem(err) {
 		problem.Hints = append(problem.Hints, fault.Hint{Label: "Configured in", Value: a.configSources()})
@@ -138,8 +91,6 @@ func ExitCode(err error) int {
 		return fault.ExitOK
 	case errors.Is(err, context.Canceled):
 		return fault.ExitInterrupted
-	case isUsage(err):
-		return fault.ExitUsage
 	}
 	return fault.ExitCode(err)
 }
@@ -150,12 +101,49 @@ func isQuiet(err error) bool {
 	return errors.As(err, &silent) || errors.Is(err, context.Canceled)
 }
 
-// isUsage recognizes the only usage error cobra reports as plain error: an unknown command. Flag
-// errors are typed by the flag error function, arguments by args (TestUnknownCommandIsAUsageError
-// notices if cobra changes the message).
-func isUsage(err error) bool {
-	var explainer fault.Explainer
-	return !errors.As(err, &explainer) && strings.HasPrefix(err.Error(), "unknown command")
+// forEachCommand calls the function for the command and all its subcommands.
+func forEachCommand(cmd *cobra.Command, call func(*cobra.Command)) {
+	call(cmd)
+	for _, child := range cmd.Commands() {
+		forEachCommand(child, call)
+	}
+}
+
+// showLogo prints the logo of Pipetower above the help when pt runs without a command.
+func showLogo(a *App, root *cobra.Command) {
+	help := root.RunE
+	root.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			a.IO.Println("\n" + ui.Logo())
+		}
+		return help(cmd, args)
+	}
+}
+
+// rejectUnknownSubcommand lets a command which only groups subcommands (pt itself too) print its
+// help without arguments, and reject an unknown subcommand with suggestions.
+func rejectUnknownSubcommand(cmd *cobra.Command) {
+	if !cmd.HasSubCommands() || cmd.Runnable() {
+		return
+	}
+	cmd.Args = cobra.ArbitraryArgs
+	cmd.SuggestionsMinimumDistance = 2 // cobra's default, applied by cobra only on its own error path
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+		return unknownCommand(cmd, args[0])
+	}
+}
+
+// unknownCommand explains an unknown subcommand and suggests the intended one, e.g. view for show.
+func unknownCommand(cmd *cobra.Command, name string) error {
+	problem := fault.Problem{Title: fmt.Sprintf("Unknown command “%s” for “%s”", name, cmd.CommandPath()), Code: fault.ExitUsage}
+	for _, suggestion := range cmd.SuggestionsFor(name) {
+		problem.Hints = append(problem.Hints, fault.Hint{Label: "Did you mean", Value: cmd.CommandPath() + " " + suggestion})
+	}
+	problem.Hints = append(problem.Hints, fault.Hint{Label: "See", Value: cmd.CommandPath() + " --help"})
+	return fault.New(problem)
 }
 
 // args requires exactly the named positional arguments and explains missing ones.
@@ -164,10 +152,18 @@ func args(names ...string) cobra.PositionalArgs {
 		if len(given) == len(names) {
 			return nil
 		}
-		usage := cmd.CommandPath() + " <" + strings.Join(names, "> <") + ">"
 		if len(given) < len(names) {
-			return usageError("Missing "+names[len(given)], "Usage: "+usage)
+			return usageProblem(cmd, "Missing "+names[len(given)])
 		}
-		return usageError(fmt.Sprintf("Too many arguments: %s", strings.Join(given[len(names):], " ")), "Usage: "+usage)
+		return usageProblem(cmd, "Too many arguments: "+strings.Join(given[len(names):], " "))
 	}
+}
+
+// usageProblem explains a wrong call of the command: what is wrong, how it is called and where its help is.
+func usageProblem(cmd *cobra.Command, title string) error {
+	return fault.New(fault.Problem{
+		Title: title,
+		Hints: []fault.Hint{{Label: "Usage", Value: usageLine(cmd)}, {Label: "See", Value: cmd.CommandPath() + " --help"}},
+		Code:  fault.ExitUsage,
+	})
 }

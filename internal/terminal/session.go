@@ -14,6 +14,7 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/gateway"
+	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
 // Reasons why attaching ended, besides the end reasons of the gateway.
@@ -75,7 +76,7 @@ func Attach(ctx context.Context, opts Options) (Result, error) {
 
 	// enabled first and restored last (deferred calls run in reverse), so that Windows consoles
 	// also interpret the sequences which save and restore the terminal state
-	defer enableVirtualTerminal(opts.Out)()
+	defer ui.EnableVirtualTerminal(opts.Out)()
 	restore, err := rawMode(opts.In, opts.Out)
 	if err != nil {
 		return Result{}, err

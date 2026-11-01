@@ -24,10 +24,21 @@ var endReasons = map[string]string{
 	"gone":      "the session does not run anymore",
 }
 
-// newSSHCommand opens a terminal on a server, like ssh.
-func newSSHCommand(a *App) *cobra.Command {
+// newTerminalCommand groups the terminal session commands.
+func newTerminalCommand(a *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:        "terminal",
+		Short:      "List, open and join shared terminal sessions",
+		SuggestFor: []string{"ssh"},
+	}
+	cmd.AddCommand(newTerminalListCommand(a), newTerminalOpenCommand(a), newTerminalJoinCommand(a))
+	return cmd
+}
+
+// newTerminalOpenCommand opens a new shared terminal session on a server.
+func newTerminalOpenCommand(a *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "ssh <server>",
+		Use:   "open <server>",
 		Short: "Open a shared terminal session on a server",
 		Long: "Open an interactive shell on a server through Pipetower. The session is shared:\n" +
 			"teammates can join it from the web or with pt terminal join.\n\n" + terminal.HelpText,
@@ -38,35 +49,25 @@ func newSSHCommand(a *App) *cobra.Command {
 	}
 }
 
-// newTerminalCommand groups the terminal session commands.
-func newTerminalCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:     "terminal",
-		Aliases: []string{"term"},
-		Short:   "Open, join and list shared terminal sessions",
-	}
-
-	open := newSSHCommand(a)
-	open.Use, open.GroupID = "open <server>", ""
-
-	cmd.AddCommand(newTerminalListCommand(a), open, &cobra.Command{
+// newTerminalJoinCommand joins a running terminal session.
+func newTerminalJoinCommand(a *App) *cobra.Command {
+	return &cobra.Command{
 		Use:   "join <session>",
 		Short: "Join a running terminal session of your team",
+		Long:  "Join a running terminal session, e.g. one opened in the web.\n\n" + terminal.HelpText,
 		Args:  args("session"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			return joinTerminal(cmd.Context(), a, argv[0])
 		},
-	})
-	return cmd
+	}
 }
 
 // newTerminalListCommand lists the live sessions of the user's teams.
 func newTerminalListCommand(a *App) *cobra.Command {
 	return &cobra.Command{
-		Use:     "ls",
-		Aliases: []string{"list"},
-		Short:   "List the live terminal sessions of your teams",
-		Args:    args(),
+		Use:   "list",
+		Short: "List the running terminal sessions of your teams",
+		Args:  args(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			client, err := connectGateway(cmd.Context(), a)
 			if err != nil {
@@ -87,7 +88,7 @@ func newTerminalListCommand(a *App) *cobra.Command {
 // printSessions prints the lobby as a table.
 func printSessions(a *App, sessions []gateway.LobbySession) {
 	if len(sessions) == 0 {
-		a.IO.Println(ui.Empty(" No live sessions right now. Open one with pt ssh <server>."))
+		a.IO.Println(ui.Empty(" No live sessions right now. Open one with pt terminal open <server>."))
 		return
 	}
 

@@ -3,30 +3,28 @@ package main
 
 import (
 	"context"
-	"io"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"charm.land/fang/v2"
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/pipetower/pipetower-cli/internal/cli"
 	"github.com/pipetower/pipetower-cli/internal/ui"
-	"github.com/pipetower/pipetower-cli/internal/version"
 )
 
 func main() {
 	ctx, stop := interruptible()
+	restoreOut, restoreErr := ui.EnableVirtualTerminal(os.Stdout), ui.EnableVirtualTerminal(os.Stderr)
 	app := cli.NewApp()
-	root := cli.NewRootCommand(app)
 
-	err := fang.Execute(ctx, root,
-		fang.WithVersion(version.Version),
-		fang.WithCommit(version.Commit),
-		fang.WithColorSchemeFunc(colorScheme),
-		fang.WithErrorHandler(func(w io.Writer, _ fang.Styles, err error) { app.HandleError(w, err) }),
-	)
+	err := cli.NewRootCommand(app).ExecuteContext(ctx)
+	if err != nil {
+		app.HandleError(colorprofile.NewWriter(os.Stderr, os.Environ()), err)
+	}
+
+	restoreOut()
+	restoreErr()
 	stop()
 	os.Exit(cli.ExitCode(err))
 }
@@ -38,15 +36,4 @@ func interruptible() (context.Context, context.CancelFunc) {
 	context.AfterFunc(ctx, stop)
 
 	return ctx, stop
-}
-
-// colorScheme is the help theme of fang in Pipetower colors.
-func colorScheme(c lipgloss.LightDarkFunc) fang.ColorScheme {
-	scheme := fang.DefaultColorScheme(c)
-	scheme.Title = ui.ColorBrand
-	scheme.Program = ui.ColorBrand
-	scheme.Command = ui.ColorBrand
-	scheme.Flag = ui.ColorGreen
-	scheme.QuotedString = ui.ColorYellow
-	return scheme
 }

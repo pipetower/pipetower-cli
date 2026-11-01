@@ -14,27 +14,24 @@ import (
 
 // runnableKind describes the shared commands of actions and workflows.
 type runnableKind struct {
-	name     string
-	resource string
-	short    string
-	resolve  func(context.Context, *resolve.Resolver, string) (resolve.Runnable, error)
+	kind    resolve.Kind
+	short   string
+	resolve func(*resolve.Resolver, context.Context, string) (resolve.Runnable, error)
 }
 
 var (
 	actionKind = runnableKind{
-		name:     "action",
-		resource: api.Actions,
-		short:    "List, inspect and run actions",
-		resolve: func(ctx context.Context, r *resolve.Resolver, arg string) (resolve.Runnable, error) {
+		kind:  resolve.KindAction,
+		short: "List, view and run actions",
+		resolve: func(r *resolve.Resolver, ctx context.Context, arg string) (resolve.Runnable, error) {
 			action, err := r.Action(ctx, arg)
 			return resolve.Runnable{Action: &action}, err
 		},
 	}
 	workflowKind = runnableKind{
-		name:     "workflow",
-		resource: api.Workflows,
-		short:    "List, inspect and run workflows",
-		resolve: func(ctx context.Context, r *resolve.Resolver, arg string) (resolve.Runnable, error) {
+		kind:  resolve.KindWorkflow,
+		short: "List, view and run workflows",
+		resolve: func(r *resolve.Resolver, ctx context.Context, arg string) (resolve.Runnable, error) {
 			workflow, err := r.Workflow(ctx, arg)
 			return resolve.Runnable{Workflow: &workflow}, err
 		},
@@ -51,10 +48,10 @@ func newWorkflowCommand(a *App) *cobra.Command {
 	return newRunnableCommand(a, workflowKind)
 }
 
-// newRunnableCommand builds list, show and run for actions or workflows.
+// newRunnableCommand builds list, view and run for actions or workflows.
 func newRunnableCommand(a *App, kind runnableKind) *cobra.Command {
-	cmd := &cobra.Command{Use: kind.name, Short: kind.short}
-	cmd.AddCommand(newRunnableListCommand(a, kind), newRunnableShowCommand(a, kind), newRunnableRunCommand(a, kind))
+	cmd := &cobra.Command{Use: kind.kind.Singular, Short: kind.short}
+	cmd.AddCommand(newRunnableListCommand(a, kind), newRunnableViewCommand(a, kind), newRunnableRunCommand(a, kind))
 	return cmd
 }
 
@@ -63,21 +60,19 @@ func newRunnableListCommand(a *App, kind runnableKind) *cobra.Command {
 	var page pageOptions
 	var search string
 	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List " + kind.resource,
-		Args:    args(),
+		Use:   "list",
+		Short: "List " + kind.kind.Resource,
+		Args:  args(),
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			opts := page.options()
-			opts.Search = search
-			if kind.resource == api.Actions {
+			opts := searchOptions(page, search)
+			if kind.kind.Resource == api.Actions {
 				return showList(cmd.Context(), a, actionListing(opts))
 			}
 			return showList(cmd.Context(), a, workflowListing(opts))
 		},
 	}
 	addPageFlags(cmd, &page)
-	cmd.Flags().StringVar(&search, "search", "", "only "+kind.resource+" whose name contains this text")
+	addSearchFlag(cmd, &search, kind.kind.Plural)
 	return cmd
 }
 
@@ -109,30 +104,22 @@ func workflowListing(opts api.ListOptions) listing[api.Workflow] {
 	}
 }
 
-// newRunnableShowCommand shows the steps and variables of an action or workflow.
-func newRunnableShowCommand(a *App, kind runnableKind) *cobra.Command {
-	return &cobra.Command{
-		Use:   "show <" + kind.name + ">",
-		Short: "Show the steps and variables of a " + kind.name,
-		Args:  args(kind.name),
-		RunE: func(cmd *cobra.Command, argv []string) error {
-			runnable, err := resolveRunnable(cmd.Context(), a, kind, argv[0])
-			if err != nil {
-				return err
-			}
-			return showOne(cmd.Context(), a, runnable, api.Show(kind.resource, runnable.ID()), renderRunnable)
-		},
-	}
+// newRunnableViewCommand views the steps and variables of an action or workflow.
+func newRunnableViewCommand(a *App, kind runnableKind) *cobra.Command {
+	return newViewCommand(a, kind.kind, "View the steps and variables of "+withArticle(kind.kind.Singular), kind.resolve,
+		resolve.Runnable.ID, renderRunnable)
 }
 
 // newRunnableRunCommand runs an action or workflow.
 func newRunnableRunCommand(a *App, kind runnableKind) *cobra.Command {
 	var flags runFlags
 	cmd := &cobra.Command{
-		Use:     "run <" + kind.name + ">",
-		Short:   "Run a " + kind.name + " on servers and follow it live",
-		Example: "  pt " + kind.name + " run \"Deploy App\" -s prod -s tag:web -v branch=main",
-		Args:    args(kind.name),
+		Use:   "run <" + kind.kind.Singular + ">",
+		Short: "Run " + withArticle(kind.kind.Singular) + " on servers and follow it live",
+		Long: "Run " + withArticle(kind.kind.Singular) + " on servers and follow every step live. Servers are given by\n" +
+			"name, id or tag:<tag>, missing variables are asked for.\n\n" + followHelp,
+		Example: "  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod -s tag:web -v branch=main",
+		Args:    args(kind.kind.Singular),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			runnable, err := resolveRunnable(cmd.Context(), a, kind, argv[0])
 			if err != nil {
@@ -151,7 +138,7 @@ func resolveRunnable(ctx context.Context, a *App, kind runnableKind, arg string)
 	if err != nil {
 		return resolve.Runnable{}, err
 	}
-	return kind.resolve(ctx, resolver, arg)
+	return kind.resolve(resolver, ctx, arg)
 }
 
 // renderRunnable renders the details of an action or workflow.
@@ -178,7 +165,7 @@ func renderVariables(variables []api.VariableDefinition) []string {
 	for i, v := range variables {
 		rows[i] = []string{ui.Bold.Render(v.Name), ui.Muted.Render(v.Type), v.Values}
 	}
-	return []string{indentBlock(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows), "  ")}
+	return []string{indent(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows), "  ")}
 }
 
 // renderSteps lists the steps of an action or the actions of a workflow.
@@ -200,7 +187,7 @@ func renderSteps(r resolve.Runnable) []string {
 	if len(rows) == 0 {
 		return []string{ui.Muted.Render("   none")}
 	}
-	return []string{indentBlock(ui.Table([]string{"#", "STEP", "TYPE", ""}[:len(rows[0])], rows), "  ")}
+	return []string{indent(ui.Table([]string{"#", "STEP", "TYPE", ""}[:len(rows[0])], rows), "  ")}
 }
 
 // stepTypeLabel turns execute_shell_script into "shell script".
@@ -240,7 +227,10 @@ func tags(list []api.Tag) string {
 	return strings.Join(rendered, " ")
 }
 
-// indentBlock indents every line of a block.
-func indentBlock(text, prefix string) string {
-	return prefix + strings.ReplaceAll(text, "\n", "\n"+prefix)
+// withArticle puts the indefinite article before a noun: "an action", "a workflow".
+func withArticle(noun string) string {
+	if strings.ContainsRune("aeiou", rune(noun[0])) {
+		return "an " + noun
+	}
+	return "a " + noun
 }

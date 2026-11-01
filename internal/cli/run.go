@@ -3,8 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
-	"slices"
-	"sort"
+	"io"
 	"strings"
 	"time"
 
@@ -12,310 +11,273 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/present"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/runview"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
-// Display modes of the --output-mode flag.
-const (
-	outputModeTree = "tree"
-	outputModeFull = "full"
-)
-
-// runFlags are the flags of commands which start runs.
-type runFlags struct {
-	servers []string
-	vars    []string
-	detach  bool
-	follow  followFlags
-}
-
-// followFlags are the flags of commands which follow runs.
-type followFlags struct {
-	quiet bool
-	mode  string
-}
-
-// newRunCommand runs an action or workflow found by name.
+// newRunCommand groups the commands about runs. Runs are started with pt action run and pt workflow run.
 func newRunCommand(a *App) *cobra.Command {
-	var flags runFlags
 	cmd := &cobra.Command{
-		Use:   "run <action-or-workflow>",
-		Short: "Run an action or workflow on servers and follow it live",
-		Long: "Run an action or workflow on one or more servers and follow every step live.\n\n" +
-			"Servers are given by name, id or tag:<tag>. Missing variables are asked for.\n" +
-			"Ctrl+C asks whether to terminate the run or to detach from it.",
-		Example: "  pt run \"Deploy App\" -s prod\n" +
-			"  pt run deploy-all -s tag:web -v branch=main --output-mode full\n" +
-			"  pt run backup -s db --detach",
-		Args: args("action-or-workflow"),
-		RunE: func(cmd *cobra.Command, argv []string) error {
-			resolver, err := a.Resolver(cmd.Context())
-			if err != nil {
-				return err
-			}
-			runnable, err := resolver.Runnable(cmd.Context(), argv[0])
-			if err != nil {
-				return err
-			}
-			return startRun(cmd.Context(), a, runnable, flags)
-		},
+		Use:        "run",
+		Short:      "List, view, watch and cancel runs",
+		SuggestFor: []string{"runs"},
 	}
-	addRunFlags(cmd, &flags)
+	cmd.AddCommand(newRunListCommand(a), newRunViewCommand(a), newRunWatchCommand(a), newRunCancelCommand(a))
 	return cmd
 }
 
-// addRunFlags adds the flags of commands which start runs.
-func addRunFlags(cmd *cobra.Command, flags *runFlags) {
-	cmd.Flags().StringArrayVarP(&flags.servers, "server", "s", nil, "server to run on: name, id or tag:<tag> (repeatable)")
-	cmd.Flags().StringArrayVarP(&flags.vars, "var", "v", nil, "variable as name=value (repeatable)")
-	cmd.Flags().BoolVarP(&flags.detach, "detach", "d", false, "start the run and return immediately")
-	addFollowFlags(cmd, &flags.follow)
+// runFilters are the filters of the run list: servers, actions, workflows and pipes by name or id.
+type runFilters struct {
+	server, action, workflow, pipe, status string
 }
 
-// addFollowFlags adds the flags of commands which follow runs.
-func addFollowFlags(cmd *cobra.Command, flags *followFlags) {
-	cmd.Flags().BoolVarP(&flags.quiet, "quiet", "q", false, "only print the result")
-	cmd.Flags().StringVar(&flags.mode, "output-mode", outputModeTree, "tree: live step tree · full: stream the complete output")
+// newRunListCommand lists the latest runs.
+func newRunListCommand(a *App) *cobra.Command {
+	var page pageOptions
+	var filters runFilters
+	cmd := &cobra.Command{
+		Use:     "list",
+		Short:   "List the latest runs",
+		Example: "  pt run list --server prod --status failed\n  pt run list --workflow \"Deploy App\"",
+		Args:    args(),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			params, err := filters.params(cmd.Context(), a)
+			if err != nil {
+				return err
+			}
+			opts := page.options()
+			opts.Params = params
+			return showList(cmd.Context(), a, runListing(opts))
+		},
+	}
+	addPageFlags(cmd, &page)
+	cmd.Flags().StringVar(&filters.server, "server", "", "only runs on this server (name or id)")
+	cmd.Flags().StringVar(&filters.action, "action", "", "only runs of this action (name or id)")
+	cmd.Flags().StringVar(&filters.workflow, "workflow", "", "only runs of this workflow (name or id)")
+	cmd.Flags().StringVar(&filters.pipe, "pipe", "", "only runs of this pipe (name or id)")
+	cmd.Flags().StringVar(&filters.status, "status", "", "only runs with this status, e.g. running or failed")
+	return cmd
 }
 
-// startRun asks for what is missing, starts the run and follows it.
-func startRun(ctx context.Context, a *App, runnable resolve.Runnable, flags runFlags) error {
-	servers, err := pickServers(ctx, a, flags.servers)
-	if err != nil {
-		return err
-	}
-	variables, err := collectVariables(a, runnable.Variables(), flags.vars)
-	if err != nil {
-		return err
-	}
-
-	client, err := a.Client()
-	if err != nil {
-		return err
-	}
-	// the start is not canceled halfway: once sent, the run may exist, so its id must be shown
-	run, err := ui.Spin(a.IO, "Starting "+runnable.Name()+"…", func() (api.Run, error) {
-		return client.StartRun(context.WithoutCancel(ctx), runnable.Request(serverIDs(servers), variables))
-	})
-	if err != nil {
-		return err
-	}
-
-	if flags.detach {
-		return printStarted(a, run)
-	}
-	if ctx.Err() != nil {
-		// interrupted while starting: the run runs, tell how to follow it
-		if err := printStarted(a, run); err != nil {
-			return err
-		}
-		return &fault.Silent{Code: fault.ExitInterrupted}
-	}
-	return followRun(ctx, a, run.ID, flags.follow)
-}
-
-// printStarted announces a detached run.
-func printStarted(a *App, run api.Run) error {
-	if a.Structured() {
-		return a.PrintValue(run)
-	}
-	a.IO.Println(" " + ui.Success.Render("✓") + " Started run " + ui.Bold.Render("#"+run.ID) +
-		ui.Muted.Render("  ·  follow it with ") + ui.Code.Render("pt runs show "+run.ID+" -f"))
-	return nil
-}
-
-// followRun follows a run until it finished and turns its status into the exit code.
-func followRun(ctx context.Context, a *App, runID string, flags followFlags) error {
-	mode, err := parseMode(flags.mode)
-	if err != nil {
-		return err
-	}
-	client, err := a.Client()
-	if err != nil {
-		return err
-	}
-
-	opts := runview.Options{Mode: mode, Quiet: flags.quiet || a.Structured(), Live: a.IO.Terminal, Out: a.IO.Out, Notices: a.IO.Err, Profile: a.IO.Profile, Width: a.IO.Width()}
-	switch {
-	case a.Structured():
-		opts.Live, opts.Out = false, a.IO.Err // stdout carries only the structured run
-	case opts.Live && !opts.Quiet:
-		opts.Out = a.IO.RawOut
-	}
-
-	result, err := runview.Watch(ctx, runview.Deps{API: client, Connect: a.Connector()}, runID, opts)
-	if err != nil {
-		return orNotFound(err, resolve.KindRun, runID)
-	}
-	if a.Structured() && result.Run != nil {
-		// also after Ctrl+C (detached), scripts get the run with its id
-		printCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-		defer cancel()
-		if err := a.printEndpoint(printCtx, api.RunEndpoint(runID, false)); err != nil {
-			return err
-		}
-	}
-	if code := result.ExitCode(); code != fault.ExitOK {
-		return &fault.Silent{Code: code}
-	}
-	return nil
-}
-
-// parseMode validates the --output-mode flag.
-func parseMode(mode string) (runview.Mode, error) {
-	switch mode {
-	case outputModeTree:
-		return runview.ModeTree, nil
-	case outputModeFull:
-		return runview.ModeFull, nil
-	}
-	return 0, usageError("Unknown output mode “"+mode+"”", "Use tree or full.")
-}
-
-// pickServers resolves the --server flags or lets the user choose servers.
-func pickServers(ctx context.Context, a *App, args []string) ([]api.Server, error) {
+// params resolves the filters into the query parameters of the run list.
+func (f runFilters) params(ctx context.Context, a *App) (map[string]string, error) {
 	resolver, err := a.Resolver(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(args) > 0 {
-		return resolver.Servers(ctx, args)
-	}
-	if resolver.Prompter == nil {
-		return nil, usageError("No server given", "Choose servers with --server <name|id|tag:tag>, it can be repeated.")
-	}
-
-	servers, err := api.ListAll[api.Server](ctx, resolver.Client, api.Servers, api.ListOptions{Team: resolver.TeamID}, 500)
-	if err != nil {
-		return nil, err
-	}
-	labels := make([]string, len(servers))
-	for i, s := range servers {
-		labels[i] = fmt.Sprintf("%s  %s  %s", s.Name, ui.Faint.Render(s.Host), ui.Connection(s.Connected))
-	}
-	chosen, err := resolver.Prompter.MultiSelect("Run on which servers?", labels)
-	if err != nil {
-		return nil, err
-	}
-	if len(chosen) == 0 {
-		return nil, usageError("No server selected", "Select servers with space, or give them with --server.")
+	lookups := []struct {
+		param, arg string
+		id         func() (string, error)
+	}{
+		{"server", f.server, func() (string, error) { x, err := resolver.Server(ctx, f.server); return x.ID, err }},
+		{"action", f.action, func() (string, error) { x, err := resolver.Action(ctx, f.action); return x.ID, err }},
+		{"workflow", f.workflow, func() (string, error) { x, err := resolver.Workflow(ctx, f.workflow); return x.ID, err }},
+		{"pipe", f.pipe, func() (string, error) { x, err := resolver.Pipe(ctx, f.pipe); return x.ID, err }},
 	}
 
-	picked := make([]api.Server, len(chosen))
-	for i, index := range chosen {
-		picked[i] = servers[index]
+	params := map[string]string{"status": f.status}
+	for _, lookup := range lookups {
+		if lookup.arg == "" {
+			continue
+		}
+		id, err := lookup.id()
+		if err != nil {
+			return nil, err
+		}
+		params[lookup.param] = id
 	}
-	return picked, nil
+	return params, nil
 }
 
-// collectVariables combines --var flags with answers for the missing variables.
-func collectVariables(a *App, definitions []api.VariableDefinition, flags []string) (map[string]string, error) {
-	values, err := parseVariables(definitions, flags)
-	if err != nil {
-		return nil, err
+// runListing lists runs.
+func runListing(opts api.ListOptions) listing[api.Run] {
+	return listing[api.Run]{
+		path:    api.Runs,
+		opts:    opts,
+		headers: present.RunHeaders,
+		row:     func(r api.Run) []string { return present.RunRow(r, time.Now()) },
+		byTeam:  true,
+		empty:   "No runs found.",
 	}
+}
 
-	var missing []api.VariableDefinition
-	for _, definition := range definitions {
-		if values[definition.Name] == "" {
-			missing = append(missing, definition)
-		}
+// newRunViewCommand views a run with its steps, its log or its page in the web.
+func newRunViewCommand(a *App) *cobra.Command {
+	var log, web bool
+	var server string
+	cmd := &cobra.Command{
+		Use:        "view <run>",
+		SuggestFor: []string{"show"},
+		Short:      "View a run with its steps, or its full log with --log",
+		Example: "  pt run view 30denr\n" +
+			"  pt run view 30denr --log --server prod > deploy.log\n" +
+			"  pt run view 30denr --web",
+		Args: args("run"),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			switch {
+			case server != "" && !log:
+				return usageError("--server only applies to --log", "Use: pt run view "+argv[0]+" --log --server "+ui.Arg(server))
+			case web:
+				return a.openWeb("runs/" + argv[0])
+			case log:
+				return printRunLog(cmd.Context(), a, argv[0], server)
+			}
+			return showRun(cmd.Context(), a, argv[0])
+		},
 	}
-	if len(missing) == 0 {
-		return values, nil
+	cmd.Flags().BoolVar(&log, "log", false, "print the full log of the run on one server")
+	cmd.Flags().StringVar(&server, "server", "", "the server of the log, if the run ran on several (name or id)")
+	addWebFlag(cmd, &web)
+	return cmd
+}
+
+// newRunWatchCommand follows a run live until it finished.
+func newRunWatchCommand(a *App) *cobra.Command {
+	var flags followFlags
+	cmd := &cobra.Command{
+		Use:   "watch <run>",
+		Short: "Follow a run live until it finishes",
+		Long:  "Follow a run live: every step, its output and its result.\n\n" + followHelp,
+		Args:  args("run"),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			return followRun(cmd.Context(), a, argv[0], flags)
+		},
+	}
+	addFollowFlags(cmd, &flags)
+	return cmd
+}
+
+// showRun prints the current state of a run once.
+func showRun(ctx context.Context, a *App, id string) error {
+	if a.Structured() {
+		return orNotFound(a.printEndpoint(ctx, api.RunEndpoint(id, true)), resolve.KindRun, id)
+	}
+	client, err := a.Client()
+	if err != nil {
+		return err
+	}
+	run, err := client.Run(ctx, id, true)
+	if err != nil {
+		return orNotFound(err, resolve.KindRun, id)
+	}
+	a.IO.Println(runview.Render(run, a.IO.Width()))
+	return nil
+}
+
+// newRunCancelCommand terminates a run.
+func newRunCancelCommand(a *App) *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "cancel <run>",
+		Short: "Cancel a run: terminate it on all servers",
+		Args:  args("run"),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			if err := confirm(a, yes, "Terminate run #"+argv[0]+" on all servers?"); err != nil {
+				return err
+			}
+			client, err := a.Client()
+			if err != nil {
+				return err
+			}
+			run, err := client.TerminateRun(cmd.Context(), argv[0])
+			if err != nil {
+				return orNotFound(err, resolve.KindRun, argv[0])
+			}
+			if a.Structured() {
+				return a.PrintValue(run)
+			}
+			a.IO.Println(" " + ui.Warning.Render("■") + " Termination of run " + ui.Bold.Render("#"+run.ID) + " requested")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "do not ask for confirmation")
+	return cmd
+}
+
+// printRunLog prints the full log of a run on one of its servers.
+func printRunLog(ctx context.Context, a *App, runID, server string) error {
+	client, err := a.Client()
+	if err != nil {
+		return err
+	}
+	run, err := client.Run(ctx, runID, false)
+	if err != nil {
+		return orNotFound(err, resolve.KindRun, runID)
+	}
+	execution, err := pickExecution(a, run, server)
+	if err != nil {
+		return err
+	}
+	log, err := client.Text(ctx, api.ExecutionLogEndpoint(execution))
+	if err != nil {
+		return err
+	}
+	_, err = io.WriteString(a.IO.RawOut, log)
+	return err
+}
+
+// pickExecution chooses the execution of a run on the given server, the only one, or asks.
+func pickExecution(a *App, run api.Run, server string) (string, error) {
+	switch {
+	case len(run.Executions) == 0:
+		return "", fault.New(fault.Problem{Title: "Run #" + run.ID + " has no executions", Code: fault.ExitAPI})
+	case server != "":
+		return executionOn(run, server)
+	case len(run.Executions) == 1:
+		return run.Executions[0].ID, nil
 	}
 
 	prompter := a.Prompter()
 	if prompter == nil {
-		return nil, missingVariablesError(missing)
+		return "", usageError("Run #"+run.ID+" ran on several servers", "Choose one with --server: "+serverNames(run))
 	}
-	for _, definition := range missing {
-		if values[definition.Name], err = askVariable(a, definition); err != nil {
-			return nil, err
-		}
+	labels := make([]string, len(run.Executions))
+	for i, e := range run.Executions {
+		labels[i] = fmt.Sprintf("%s  %s  %s", e.Server.Name, ui.Faint.Render(e.Server.Host), present.StatusBadge(e.Status))
 	}
-	return values, nil
+	index, err := prompter.Select("Log of which server?", labels)
+	if err != nil {
+		return "", err
+	}
+	return run.Executions[index].ID, nil
 }
 
-// parseVariables parses name=value flags and checks them against the definitions.
-func parseVariables(definitions []api.VariableDefinition, flags []string) (map[string]string, error) {
-	known := map[string]api.VariableDefinition{}
-	for _, definition := range definitions {
-		known[definition.Name] = definition
-	}
-
-	values := map[string]string{}
-	for _, flag := range flags {
-		name, value, ok := strings.Cut(flag, "=")
-		definition, isKnown := known[name]
-		switch {
-		case !ok || name == "":
-			return nil, usageError("Invalid variable “"+flag+"”", "Use --var name=value.")
-		case !isKnown:
-			return nil, usageError("Unknown variable “"+name+"”", "Known variables: "+ui.Or(definitionNames(definitions), "none"))
-		case definition.Type == api.VariableSelection && !slices.Contains(selectionValues(definition), value):
-			return nil, usageError("Invalid value for "+name, "Choose one of: "+strings.Join(selectionValues(definition), ", "))
-		}
-		values[name] = value
-	}
-	return values, nil
-}
-
-// askVariable asks for the value of one variable.
-func askVariable(a *App, definition api.VariableDefinition) (string, error) {
-	prompter := a.Prompter()
-	if definition.Type == api.VariableSelection {
-		options := selectionValues(definition)
-		index, err := prompter.Select(definition.Name, options)
-		if err != nil {
-			return "", err
-		}
-		return options[index], nil
-	}
-	return prompter.Input(definition.Name, "Value of the variable "+definition.Name)
-}
-
-// missingVariablesError explains which variables must be given.
-func missingVariablesError(missing []api.VariableDefinition) error {
-	var hints []string
-	for _, definition := range missing {
-		hint := "-v " + definition.Name + "=…"
-		if definition.Type == api.VariableSelection {
-			hint += "  (" + strings.Join(selectionValues(definition), " | ") + ")"
-		}
-		hints = append(hints, "  "+hint)
-	}
-	sort.Strings(hints)
-	return usageError("Missing variables", "Give them with --var:\n"+strings.Join(hints, "\n"))
-}
-
-// selectionValues splits the comma separated values of a selection variable.
-func selectionValues(definition api.VariableDefinition) []string {
-	var values []string
-	for _, value := range strings.Split(definition.Values, ",") {
-		if value = strings.TrimSpace(value); value != "" {
-			values = append(values, value)
+// executionOn finds the execution of the run on the server given by name or id.
+func executionOn(run api.Run, server string) (string, error) {
+	for _, e := range run.Executions {
+		if strings.EqualFold(e.Server.Name, server) || e.Server.ID == server {
+			return e.ID, nil
 		}
 	}
-	return values
+	return "", usageError("Run #"+run.ID+" did not run on “"+server+"”", "It ran on: "+serverNames(run))
 }
 
-// definitionNames lists the names of variable definitions.
-func definitionNames(definitions []api.VariableDefinition) string {
-	names := make([]string, len(definitions))
-	for i, definition := range definitions {
-		names[i] = definition.Name
+// serverNames lists the servers a run ran on.
+func serverNames(run api.Run) string {
+	names := make([]string, len(run.Executions))
+	for i, e := range run.Executions {
+		names[i] = ui.Arg(e.Server.Name)
 	}
 	return strings.Join(names, ", ")
 }
 
-// serverIDs returns the ids of servers.
-func serverIDs(servers []api.Server) []string {
-	ids := make([]string, len(servers))
-	for i, server := range servers {
-		ids[i] = server.ID
+// confirm asks a yes/no question unless --yes was given; without a terminal --yes is required.
+func confirm(a *App, yes bool, question string) error {
+	if yes {
+		return nil
 	}
-	return ids
+	prompter := a.Prompter()
+	if prompter == nil {
+		return usageError("Confirmation needed", "Add --yes to confirm without a prompt.")
+	}
+	ok, err := prompter.Confirm(question, "Yes", "No")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &fault.Silent{Code: fault.ExitInterrupted}
+	}
+	return nil
 }

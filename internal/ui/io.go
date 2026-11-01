@@ -33,7 +33,8 @@ func NewIO(noColor, noInput bool) *IO {
 	out := colorprofile.NewWriter(os.Stdout, os.Environ())
 	errOut := colorprofile.NewWriter(os.Stderr, os.Environ())
 	if noColor {
-		out.Profile, errOut.Profile = colorprofile.ASCII, colorprofile.ASCII
+		// without colors, but never more than the stream supports (a pipe gets no sequences at all)
+		out.Profile, errOut.Profile = min(out.Profile, colorprofile.ASCII), min(errOut.Profile, colorprofile.ASCII)
 	}
 
 	stdinTTY := term.IsTerminal(int(os.Stdin.Fd()))

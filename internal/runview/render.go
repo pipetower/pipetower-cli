@@ -288,7 +288,7 @@ func renderSummary(run *api.Run) string {
 	lines := []string{"", " " + line}
 	for _, e := range run.Executions {
 		if isProblem(e.Status) {
-			lines = append(lines, "   "+ui.Muted.Render("Log of "+e.Server.Name+": ")+ui.Code.Render("pt runs log "+e.ID))
+			lines = append(lines, "   "+ui.Muted.Render("Log of "+e.Server.Name+": ")+ui.Code.Render("pt run view "+run.ID+" --log --server "+ui.Arg(e.Server.Name)))
 		}
 	}
 	return strings.Join(lines, "\n") + "\n"

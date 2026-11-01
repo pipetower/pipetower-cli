@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/exp/golden"
+	"github.com/spf13/cobra"
 
 	"github.com/pipetower/pipetower-cli/internal/config"
 	"github.com/pipetower/pipetower-cli/internal/fault"
@@ -24,6 +26,7 @@ type result struct {
 	stdout string
 	stderr string
 	code   int
+	opened string
 }
 
 // fakeAPI answers API paths (with query) with fixed JSON and rejects other tokens.
@@ -79,7 +82,12 @@ func run(t *testing.T, dir string, args ...string) result {
 		return &ui.IO{Out: plain(&stdout), Err: plain(&stderr), RawOut: &stdout, Profile: colorprofile.NoTTY}
 	}
 
+	opened := ""
 	app := NewAppWith(env, newIO)
+	app.openURL = func(url string) error {
+		opened = url
+		return nil
+	}
 	root := NewRootCommand(app)
 	root.SetArgs(args)
 	root.SetOut(&stdout)
@@ -91,7 +99,7 @@ func run(t *testing.T, dir string, args ...string) result {
 		app.HandleError(plainWriter(&stderr), err)
 	}
 
-	return result{stdout: stdout.String(), stderr: stderr.String(), code: ExitCode(err)}
+	return result{stdout: stdout.String(), stderr: stderr.String(), code: ExitCode(err), opened: opened}
 }
 
 // plainWriter writes without colors.
@@ -142,7 +150,7 @@ func TestRejectedTokenIsAConfigurationError(t *testing.T) {
 func TestAmbiguousNameWithoutTerminalListsTheCandidates(t *testing.T) {
 	api := fakeAPI{"GET /api/v1/servers?limit=100&search=web": serversPage}
 
-	out := execute(t, api, "test-token", "server", "show", "web")
+	out := execute(t, api, "test-token", "server", "view", "web")
 
 	if out.code == fault.ExitOK || !strings.Contains(out.stderr, "web-01") || !strings.Contains(out.stderr, "web-02") {
 		t.Errorf("exit %d, stderr:\n%s", out.code, out.stderr)
@@ -157,6 +165,32 @@ func TestUnknownCommandIsAUsageError(t *testing.T) {
 	}
 }
 
+func TestTypoInCommandSuggestsTheIntendedOne(t *testing.T) {
+	out := execute(t, fakeAPI{}, "test-token", "run", "lst")
+
+	if out.code != fault.ExitUsage || !strings.Contains(out.stderr, "pt run list") {
+		t.Errorf("exit %d, stderr:\n%s", out.code, out.stderr)
+	}
+}
+
+func TestWrongCallShowsTheUsage(t *testing.T) {
+	for _, args := range [][]string{{"run", "view"}, {"run", "view", "r1", "r2"}, {"run", "view", "r1", "--bogus"}} {
+		out := execute(t, fakeAPI{}, "test-token", args...)
+		if out.code != fault.ExitUsage || !strings.Contains(out.stderr, "pt run view <run> [flags]") {
+			t.Errorf("%v: exit %d, stderr:\n%s", args, out.code, out.stderr)
+		}
+	}
+}
+
+func TestHelpSeparatesOwnAndGlobalFlags(t *testing.T) {
+	out := execute(t, fakeAPI{}, "test-token", "run", "view", "--help")
+	own, global, found := strings.Cut(out.stdout, "GLOBAL FLAGS")
+
+	if !found || !strings.Contains(own, "--log") || strings.Contains(own, "--help") || !strings.Contains(global, "Show the help") {
+		t.Errorf("help:\n%s", out.stdout)
+	}
+}
+
 const finishedRun = `{"id":"r1","team_id":"t1","status":"successful","executable":{"id":"a1","type":"Action","name":"Deploy"},
 	"executions":[{"id":"e1","server":{"id":"a1","name":"web-01","host":"10.0.0.1"},"status":"successful","steps":[],
 	"started_at":"2026-10-31T12:00:00+00:00","finished_at":"2026-10-31T12:00:05+00:00"}],
@@ -168,7 +202,7 @@ func TestFollowingARunAsJSONPrintsOnlyJSON(t *testing.T) {
 		"GET /api/v1/runs/r1":                finishedRun,
 	}
 
-	out := execute(t, api, "test-token", "runs", "show", "r1", "-f", "-o", "json")
+	out := execute(t, api, "test-token", "run", "watch", "r1", "-o", "json")
 
 	var run map[string]any
 	if err := json.Unmarshal([]byte(out.stdout), &run); err != nil || run["id"] != "r1" {
@@ -193,9 +227,102 @@ func TestTeamFilterIsAppliedByTheAPI(t *testing.T) {
 }
 
 func TestUnknownRunIsNamed(t *testing.T) {
-	out := execute(t, fakeAPI{}, "test-token", "runs", "show", "zzz")
+	out := execute(t, fakeAPI{}, "test-token", "run", "view", "zzz")
 
 	if out.code != fault.ExitAPI || !strings.Contains(out.stderr, "Run “zzz” not found") {
 		t.Errorf("exit %d, stderr:\n%s", out.code, out.stderr)
+	}
+}
+
+// webServers answers the server search for "web" and the runs and variables of web-01.
+func webServers(extra fakeAPI) fakeAPI {
+	api := fakeAPI{"GET /api/v1/servers?limit=100&search=web-01": serversPage}
+	for key, value := range extra {
+		api[key] = value
+	}
+	return api
+}
+
+func TestRunListFiltersByNameAreResolvedToIDs(t *testing.T) {
+	api := webServers(fakeAPI{"GET /api/v1/runs?limit=25&server=a1&status=failed": `{"data":[],"meta":{"from":null,"to":null,"total":0,"per_page":25,"has_more":false}}`})
+
+	out := execute(t, api, "test-token", "run", "list", "--server", "web-01", "--status", "failed")
+
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "No runs found.") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", out.code, out.stdout, out.stderr)
+	}
+}
+
+func TestRunLogOfAServer(t *testing.T) {
+	api := fakeAPI{
+		"GET /api/v1/runs/r1":               finishedRun,
+		"GET /api/v1/run-executions/e1/log": "Run #r1 log",
+	}
+
+	out := execute(t, api, "test-token", "run", "view", "r1", "--log", "--server", "web-01")
+	unknown := execute(t, api, "test-token", "run", "view", "r1", "--log", "--server", "db-01")
+
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "Run #r1 log") {
+		t.Errorf("exit %d, stdout:\n%s\nstderr:\n%s", out.code, out.stdout, out.stderr)
+	}
+	if unknown.code != fault.ExitUsage || !strings.Contains(unknown.stderr, "It ran on: web-01") {
+		t.Errorf("exit %d, stderr:\n%s", unknown.code, unknown.stderr)
+	}
+}
+
+func TestViewOpensTheWebPage(t *testing.T) {
+	out := execute(t, fakeAPI{}, "test-token", "run", "view", "r1", "--web")
+
+	if out.code != fault.ExitOK || !strings.HasSuffix(out.opened, "/runs/r1") {
+		t.Errorf("exit %d, opened %q, stderr:\n%s", out.code, out.opened, out.stderr)
+	}
+}
+
+func TestVariablesOfTheAccountOrAServer(t *testing.T) {
+	variables := `{"data":[{"name":"TOKEN","value":"***","secret":true}],"meta":{"from":1,"to":1,"total":1,"per_page":25,"has_more":false}}`
+	api := webServers(fakeAPI{"GET /api/v1/account/vars?limit=25": variables, "GET /api/v1/servers/a1/vars?limit=25": variables})
+
+	for _, args := range [][]string{{"variable", "list"}, {"variable", "list", "--server", "web-01"}} {
+		if out := execute(t, api, "test-token", args...); out.code != fault.ExitOK || !strings.Contains(out.stdout, "TOKEN") {
+			t.Errorf("%v: exit %d\nstdout:\n%s\nstderr:\n%s", args, out.code, out.stdout, out.stderr)
+		}
+	}
+}
+
+// commandTree lists every command with its short description, nested commands indented.
+func commandTree(cmd *cobra.Command, depth int) string {
+	text := ""
+	for _, child := range cmd.Commands() {
+		text += fmt.Sprintf("%s%-*s %s\n", strings.Repeat("  ", depth), 24-2*depth, child.Use, child.Short)
+		text += commandTree(child, depth+1)
+	}
+	return text
+}
+
+func TestGoldenCommandTree(t *testing.T) {
+	golden.RequireEqual(t, commandTree(NewRootCommand(NewApp()), 0))
+}
+
+func TestNoCommandHasAliasesOrIsHidden(t *testing.T) {
+	var visit func(*cobra.Command)
+	visit = func(cmd *cobra.Command) {
+		if len(cmd.Aliases) > 0 || cmd.Hidden {
+			t.Errorf("%q has aliases %v or is hidden: every command has one name", cmd.CommandPath(), cmd.Aliases)
+		}
+		for _, child := range cmd.Commands() {
+			visit(child)
+		}
+	}
+	visit(NewRootCommand(NewApp()))
+}
+
+func TestLogoOnlyWhenPtRunsWithoutCommand(t *testing.T) {
+	logoLine := "╚═╝     ╚═╝╚═╝     ╚══════╝   ╚═╝    ╚═════╝  ╚══╝╚══╝ ╚══════╝╚═╝  ╚═╝"
+
+	if out := execute(t, fakeAPI{}, "test-token"); !strings.Contains(out.stdout, logoLine) {
+		t.Errorf("pt must show the logo:\n%s", out.stdout)
+	}
+	if out := execute(t, fakeAPI{}, "test-token", "--help"); strings.Contains(out.stdout, logoLine) {
+		t.Errorf("pt --help must not show the logo:\n%s", out.stdout)
 	}
 }

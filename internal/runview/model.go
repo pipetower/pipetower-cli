@@ -258,7 +258,7 @@ func terminateNotice(err error) string {
 
 // detachedHint tells how to follow the run again.
 func detachedHint(runID string) string {
-	return ui.Muted.Render(" Detached, the run continues on the servers. Follow it again with ") + ui.Code.Render("pt runs show "+runID+" -f") + "\n"
+	return ui.Muted.Render(" Detached, the run continues on the servers. Follow it again with ") + ui.Code.Render("pt run watch "+runID) + "\n"
 }
 
 // connectionNotice describes a change of the connection for the line log.

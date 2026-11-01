@@ -1,0 +1,37 @@
+action                   List, view and run actions
+  list                   List actions
+  run <action>           Run an action on servers and follow it live
+  view <action>          View the steps and variables of an action
+api <method> <path>      Send an authenticated request to the REST API and print the JSON
+completion <shell>       Print the shell completion script (bash, zsh, fish, powershell)
+pipe                     List and view pipes (automations)
+  list                   List pipes
+  view <pipe>            View the trigger and steps of a pipe
+run                      List, view, watch and cancel runs
+  cancel <run>           Cancel a run: terminate it on all servers
+  list                   List the latest runs
+  view <run>             View a run with its steps, or its full log with --log
+  watch <run>            Follow a run live until it finishes
+server                   List and view servers, their health and connections
+  connect <server>       Open the SSH connection of a server
+  disconnect <server>    Close the SSH connection of a server
+  list                   List servers with CPU, memory, disk and load
+  view <server>          View the dashboard of a server: system, usage and latest runs
+status                   Check the configuration, the API token and the real-time gateway
+team                     List and view your teams and their members
+  list                   List your teams
+  view <team>            View the members of a team
+template                 List and view file templates
+  list                   List templates
+  view <template>        View the content of a template
+terminal                 List, open and join shared terminal sessions
+  join <session>         Join a running terminal session of your team
+  list                   List the running terminal sessions of your teams
+  open <server>          Open a shared terminal session on a server
+variable                 List the variables of your account, a team or a server
+  list                   List the variables of your account, or of a server or team
+version                  Print the version of pt
+workflow                 List, view and run workflows
+  list                   List workflows
+  run <workflow>         Run a workflow on servers and follow it live
+  view <workflow>        View the steps and variables of a workflow

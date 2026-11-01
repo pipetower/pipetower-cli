@@ -13,5 +13,5 @@
    ⚠ Deploy app  Not allowed to run on this server                                               0s
 
  ✗ Failed  in 9s · 0 of 2 servers succeeded
-   Log of prod: pt runs log 0r76v1
-   Log of staging: pt runs log 0r76v2
+   Log of prod: pt run view 30denr --log --server prod
+   Log of staging: pt run view 30denr --log --server staging

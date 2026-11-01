@@ -21,20 +21,20 @@ type Kind struct {
 	Singular string
 	Plural   string
 	Resource string
+	// Command is the command group of the kind, e.g. "terminal" for terminal sessions.
+	Command string
 }
 
 // Resource kinds.
 var (
-	KindServer         = Kind{"server", "servers", api.Servers}
-	KindAction         = Kind{"action", "actions", api.Actions}
-	KindWorkflow       = Kind{"workflow", "workflows", api.Workflows}
-	KindPipe           = Kind{"pipe", "pipes", api.Pipes}
-	KindTemplate       = Kind{"template", "templates", api.Templates}
-	KindTeam           = Kind{"team", "teams", api.Teams}
-	KindRunnable       = Kind{"action or workflow", "actions and workflows", ""}
-	KindRun            = Kind{"run", "runs", api.Runs}
-	KindRunOrExecution = Kind{"run or execution", "runs", api.Runs}
-	KindSession        = Kind{"terminal session", "terminal sessions", "terminal-sessions"}
+	KindServer   = Kind{"server", "servers", api.Servers, "server"}
+	KindAction   = Kind{"action", "actions", api.Actions, "action"}
+	KindWorkflow = Kind{"workflow", "workflows", api.Workflows, "workflow"}
+	KindPipe     = Kind{"pipe", "pipes", api.Pipes, "pipe"}
+	KindTemplate = Kind{"template", "templates", api.Templates, "template"}
+	KindTeam     = Kind{"team", "teams", api.Teams, "team"}
+	KindRun      = Kind{"run", "runs", api.Runs, "run"}
+	KindSession  = Kind{"terminal session", "terminal sessions", "terminal-sessions", "terminal"}
 )
 
 // Resolver resolves arguments, asking the user when a name is ambiguous.

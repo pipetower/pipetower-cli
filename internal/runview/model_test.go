@@ -115,7 +115,7 @@ func TestCtrlCWhileConnectingIsVisibleAndDetachesSafely(t *testing.T) {
 	}
 
 	_, cmd := m.Update(press('n', false))
-	if !quits(cmd) || !strings.Contains(ansi.Strip(m.finalText()), "pt runs show 30denr -f") {
+	if !quits(cmd) || !strings.Contains(ansi.Strip(m.finalText()), "pt run watch 30denr") {
 		t.Errorf("detaching before the first update must quit with the follow hint: %q", ansi.Strip(m.finalText()))
 	}
 }

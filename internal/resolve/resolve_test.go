@@ -149,19 +149,3 @@ func TestUnknownTag(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
-
-func TestRunnableAcrossActionsAndWorkflows(t *testing.T) {
-	r := &Resolver{Client: fakeAPI(t)}
-
-	runnable, err := r.Runnable(context.Background(), "deploy all")
-	if err != nil || runnable.Workflow == nil || runnable.ID() != "wf1" {
-		t.Fatalf("runnable = %+v, err = %v", runnable, err)
-	}
-
-	prompter := &fakePrompter{pick: 0}
-	r.Prompter = prompter
-	runnable, err = r.Runnable(context.Background(), "deploy")
-	if err != nil || runnable.Type() != "Action" || len(prompter.asked) != 2 {
-		t.Fatalf("runnable = %+v, err = %v, asked = %v", runnable, err, prompter.asked)
-	}
-}
