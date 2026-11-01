@@ -34,7 +34,7 @@ func newTeamListCommand(a *App) *cobra.Command {
 				opts:    searchOptions(page, search),
 				headers: []string{"TEAM", "MEMBERS", "ID"},
 				row: func(t api.Team) []string {
-					return []string{ui.Bold.Render(t.Name), memberNames(t.Members), ui.Faint.Render(t.ID)}
+					return []string{ui.Bold.Render(t.Name), fmt.Sprint(len(t.Members)), ui.Faint.Render(t.ID)}
 				},
 				empty: "You are in no team.",
 			})
@@ -108,7 +108,7 @@ func newTemplateCommand(a *App) *cobra.Command {
 }
 
 // renderPipe renders the trigger and steps of a pipe.
-func renderPipe(p api.Pipe) string {
+func renderPipe(p api.Pipe, width int) string {
 	lines := []string{"", " " + ui.Title.Render(p.Name) + "  " + ui.Muted.Render("Pipe · "+p.ID) + "  " + active(p.Active), ""}
 	lines = append(lines, " "+ui.Bold.Render("Trigger")+"  "+trigger(p.Trigger), "", " "+ui.Bold.Render("Steps"))
 
@@ -119,14 +119,14 @@ func renderPipe(p api.Pipe) string {
 	if len(rows) == 0 {
 		lines = append(lines, ui.Muted.Render("   none"))
 	} else {
-		lines = append(lines, indent(ui.Table([]string{"#", "TYPE", "EVENT"}, rows), "  "))
+		lines = append(lines, ui.Indent(ui.Table([]string{"#", "TYPE", "EVENT"}, rows, width-2), "  "))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// renderTemplate renders a template: a header and its raw content.
-func renderTemplate(t api.Template) string {
-	return ui.Title.Render(t.Name) + "  " + ui.Code.Render(t.FileName) + "\n" + ui.Faint.Render(strings.Repeat("─", 40)) + "\n" + t.Content
+// renderTemplate renders a template: a header like the other views and its raw content, ready to copy.
+func renderTemplate(t api.Template, _ int) string {
+	return "\n " + ui.Title.Render(t.Name) + "  " + ui.Muted.Render("Template · "+t.ID+" · "+t.FileName) + "\n\n" + t.Content + "\n"
 }
 
 // trigger describes a pipe trigger.
@@ -142,17 +142,8 @@ func active(isActive bool) string {
 	return ui.Faint.Render("○ inactive")
 }
 
-// memberNames lists the members of a team with their roles.
-func memberNames(members []api.Member) string {
-	names := make([]string, len(members))
-	for i, m := range members {
-		names[i] = m.Name + ui.Faint.Render(" ("+m.Role+")")
-	}
-	return strings.Join(names, ", ")
-}
-
 // renderTeam renders the members of a team with their roles.
-func renderTeam(t api.Team) string {
+func renderTeam(t api.Team, width int) string {
 	rows := make([][]string, len(t.Members))
 	for i, m := range t.Members {
 		twoFactor := ui.Faint.Render("–")
@@ -162,5 +153,5 @@ func renderTeam(t api.Team) string {
 		rows[i] = []string{ui.Bold.Render(m.Name), m.Email, m.Role, twoFactor}
 	}
 	return "\n " + ui.Title.Render(t.Name) + "  " + ui.Muted.Render("Team · "+t.ID) + "\n\n" +
-		indent(ui.Table([]string{"MEMBER", "EMAIL", "ROLE", "2FA"}, rows), "  ") + "\n"
+		ui.Indent(ui.Table([]string{"MEMBER", "EMAIL", "ROLE", "2FA"}, rows, width-2), "  ") + "\n"
 }

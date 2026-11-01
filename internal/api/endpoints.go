@@ -63,11 +63,6 @@ func Show(resource, id string) Endpoint {
 	return Endpoint{Method: http.MethodGet, Path: resource + "/" + url.PathEscape(id)}
 }
 
-// Nested is the endpoint of a list below a resource, like the runs of a server.
-func Nested(resource, id, sub string, opts ListOptions) Endpoint {
-	return List(NestedPath(resource, id, sub), opts)
-}
-
 // NestedPath is the path of a list below a resource.
 func NestedPath(resource, id, sub string) string {
 	return resource + "/" + url.PathEscape(id) + "/" + sub
@@ -81,15 +76,6 @@ func Post(path string, body any) Endpoint {
 // RunEndpoint is the endpoint of a run, optionally with the output of all steps.
 func RunEndpoint(id string, withOutput bool) Endpoint {
 	e := Show(Runs, id)
-	if withOutput {
-		e.Query = url.Values{"include": {"output"}}
-	}
-	return e
-}
-
-// ExecutionEndpoint is the endpoint of a run execution, optionally with output.
-func ExecutionEndpoint(id string, withOutput bool) Endpoint {
-	e := Show("run-executions", id)
 	if withOutput {
 		e.Query = url.Values{"include": {"output"}}
 	}

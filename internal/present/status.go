@@ -41,9 +41,3 @@ func StatusIcon(status string) string {
 	look := Status(status)
 	return ui.Fg(look.Color).Render(look.Icon)
 }
-
-// StatusBadge renders the colored icon and label of a status.
-func StatusBadge(status string) string {
-	look := Status(status)
-	return ui.Fg(look.Color).Render(look.Icon + " " + look.Label)
-}

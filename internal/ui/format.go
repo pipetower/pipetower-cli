@@ -100,14 +100,6 @@ func Percent(value float64) string {
 	return fmt.Sprintf("%.0f%%", math.Round(value))
 }
 
-// Float renders an optional number, or a dash.
-func Float(value *float64, decimals int) string {
-	if value == nil {
-		return "–"
-	}
-	return fmt.Sprintf("%.*f", decimals, *value)
-}
-
 // Or returns the value or the fallback when it is empty.
 func Or(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {

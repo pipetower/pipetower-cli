@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/present"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/runview"
 	"github.com/pipetower/pipetower-cli/internal/ui"
@@ -114,17 +114,21 @@ func newRunViewCommand(a *App) *cobra.Command {
 		Example: "  pt run view 30denr\n" +
 			"  pt run view 30denr --log --server prod > deploy.log\n" +
 			"  pt run view 30denr --web",
-		Args: args("run"),
+		Args: argOrPick(a, "run"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			switch {
-			case server != "" && !log:
-				return usageError("--server only applies to --log", "Use: pt run view "+argv[0]+" --log --server "+ui.Arg(server))
-			case web:
-				return a.openWeb("runs/" + argv[0])
-			case log:
-				return printRunLog(cmd.Context(), a, argv[0], server)
+			if server != "" && !log {
+				return usageError("--server only applies to --log", "Use: pt run view <run> --log --server "+ui.Arg(server))
 			}
-			return showRun(cmd.Context(), a, argv[0])
+			id, err := runOrPick(cmd.Context(), a, argv, false)
+			switch {
+			case err != nil:
+				return err
+			case web:
+				return a.openWeb("runs/" + id)
+			case log:
+				return printRunLog(cmd.Context(), a, id, server)
+			}
+			return showRun(cmd.Context(), a, id)
 		},
 	}
 	cmd.Flags().BoolVar(&log, "log", false, "print the full log of the run on one server")
@@ -140,13 +144,74 @@ func newRunWatchCommand(a *App) *cobra.Command {
 		Use:   "watch <run>",
 		Short: "Follow a run live until it finishes",
 		Long:  "Follow a run live: every step, its output and its result.\n\n" + followHelp,
-		Args:  args("run"),
+		Args:  argOrPick(a, "run"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			return followRun(cmd.Context(), a, argv[0], flags)
+			id, err := runOrPick(cmd.Context(), a, argv, true)
+			if err != nil {
+				return err
+			}
+			return followRun(cmd.Context(), a, id, flags)
 		},
 	}
 	addFollowFlags(cmd, &flags)
 	return cmd
+}
+
+// runOrPick returns the run argument, or the id of a run the user picks: one of the latest runs,
+// or with unfinished one of the runs which are pending or running.
+func runOrPick(ctx context.Context, a *App, argv []string, unfinished bool) (string, error) {
+	if id := optionalArg(argv); id != "" {
+		return id, nil
+	}
+	runs, err := pickableRuns(ctx, a, unfinished)
+	if err != nil {
+		return "", err
+	}
+
+	now := time.Now()
+	options := make([]prompt.Option, len(runs))
+	for i, run := range runs {
+		started := ui.Ago(ui.FirstTime(run.StartedAt, run.CreatedAt), now)
+		options[i] = prompt.Option{Mark: present.StatusIcon(run.Status), Columns: []string{present.RunName(run), "#" + run.ID, present.RunBy(run), started}}
+	}
+	index, err := a.Prompter().Pick("Which run?", options)
+	if err != nil {
+		return "", err
+	}
+	return runs[index].ID, nil
+}
+
+// pickableRuns loads the latest runs, or the pending and running ones, of the team of --team.
+func pickableRuns(ctx context.Context, a *App, unfinished bool) ([]api.Run, error) {
+	client, err := a.Client()
+	if err != nil {
+		return nil, err
+	}
+	team, err := a.TeamID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	statuses := []string{""}
+	if unfinished {
+		statuses = []string{api.StatusRunning, api.StatusPending}
+	}
+	var runs []api.Run
+	for _, status := range statuses {
+		found, err := api.ListAll[api.Run](ctx, client, api.Runs, api.ListOptions{Team: team, Params: map[string]string{"status": status}}, api.MaxLimit)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, found...)
+	}
+
+	if len(runs) == 0 && unfinished {
+		return nil, fault.New(fault.Problem{Title: "No run is running", Hints: []fault.Hint{{Label: "See the latest runs", Value: "pt run list"}}, Code: fault.ExitAPI})
+	}
+	if len(runs) == 0 {
+		return nil, fault.New(fault.Problem{Title: "No runs found", Code: fault.ExitAPI})
+	}
+	return runs, nil
 }
 
 // showRun prints the current state of a run once.
@@ -172,18 +237,22 @@ func newRunCancelCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cancel <run>",
 		Short: "Cancel a run: terminate it on all servers",
-		Args:  args("run"),
+		Args:  argOrPick(a, "run"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			if err := confirm(a, yes, "Terminate run #"+argv[0]+" on all servers?"); err != nil {
+			id, err := runOrPick(cmd.Context(), a, argv, true)
+			if err != nil {
+				return err
+			}
+			if err := confirm(a, yes, "Terminate run #"+id+" on all servers?"); err != nil {
 				return err
 			}
 			client, err := a.Client()
 			if err != nil {
 				return err
 			}
-			run, err := client.TerminateRun(cmd.Context(), argv[0])
+			run, err := client.TerminateRun(cmd.Context(), id)
 			if err != nil {
-				return orNotFound(err, resolve.KindRun, argv[0])
+				return orNotFound(err, resolve.KindRun, id)
 			}
 			if a.Structured() {
 				return a.PrintValue(run)
@@ -233,11 +302,11 @@ func pickExecution(a *App, run api.Run, server string) (string, error) {
 	if prompter == nil {
 		return "", usageError("Run #"+run.ID+" ran on several servers", "Choose one with --server: "+serverNames(run))
 	}
-	labels := make([]string, len(run.Executions))
+	options := make([]prompt.Option, len(run.Executions))
 	for i, e := range run.Executions {
-		labels[i] = fmt.Sprintf("%s  %s  %s", e.Server.Name, ui.Faint.Render(e.Server.Host), present.StatusBadge(e.Status))
+		options[i] = prompt.Option{Mark: present.StatusIcon(e.Status), Columns: []string{e.Server.Name, e.Server.Host}}
 	}
-	index, err := prompter.Select("Log of which server?", labels)
+	index, err := prompter.Pick("Log of which server?", options)
 	if err != nil {
 		return "", err
 	}

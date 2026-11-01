@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
@@ -15,24 +16,28 @@ import (
 // helpIndent indents the content of the help sections below their titles.
 const helpIndent = "    "
 
+// minWrapWidth is the narrowest column help texts wrap into.
+const minWrapWidth = 20
+
 // row is a name with its description, in the lists of commands and flags.
 type row [2]string
 
 // renderHelp renders the help of a command, the same for every command: the description, the usage,
 // the subcommands (by name), the flags, examples and where to learn more. Sections without content
 // are left out, the descriptions of all lists start in the same column. Usage and examples are muted,
-// so that the commands and flags stand out.
-func renderHelp(cmd *cobra.Command) string {
+// so that the commands and flags stand out. Texts wrap at the width, keeping their indent.
+func renderHelp(cmd *cobra.Command, width int) string {
 	commands, flags, globals := subcommands(cmd), flagList(cmd.LocalNonPersistentFlags()), flagList(cmd.Root().PersistentFlags())
-	width := nameWidth(slices.Concat(commands, flags, globals))
+	names := nameWidth(slices.Concat(commands, flags, globals))
+	listWidth := width - len(helpIndent)
 	sections := []string{
-		helpSection("", description(cmd)),
+		helpSection("", wrap(description(cmd), width-2)),
 		helpSection("USAGE", ui.Muted.Render(usageLine(cmd))),
-		helpSection("COMMANDS", columns(commands, width)),
-		helpSection("FLAGS", columns(flags, width)),
-		helpSection("GLOBAL FLAGS", columns(globals, width)),
+		helpSection("COMMANDS", columns(commands, names, listWidth)),
+		helpSection("FLAGS", columns(flags, names, listWidth)),
+		helpSection("GLOBAL FLAGS", columns(globals, names, listWidth)),
 		helpSection("EXAMPLES", examples(cmd)),
-		helpSection("", learnMore(cmd)),
+		helpSection("", wrap(learnMore(cmd), width-2)),
 	}
 	sections = slices.DeleteFunc(sections, func(section string) bool { return section == "" })
 	return "\n" + strings.Join(sections, "\n\n") + "\n\n"
@@ -44,9 +49,9 @@ func helpSection(title, content string) string {
 		return ""
 	}
 	if title == "" {
-		return indent(content, "  ")
+		return ui.Indent(content, "  ")
 	}
-	return "  " + ui.Title.Render(title) + "\n" + indent(content, helpIndent)
+	return "  " + ui.Title.Render(title) + "\n" + ui.Indent(content, helpIndent)
 }
 
 // description is the long description of a command, or its short one.
@@ -137,23 +142,25 @@ func nameWidth(rows []row) int {
 }
 
 // columns renders the rows with their descriptions three spaces after the given name width.
-func columns(rows []row, width int) string {
+func columns(rows []row, names, width int) string {
+	gap := strings.Repeat(" ", 3)
 	lines := make([]string, len(rows))
 	for i, r := range rows {
-		lines[i] = r[0] + strings.Repeat(" ", width-lipgloss.Width(r[0])+3) + r[1]
+		description := strings.ReplaceAll(wrap(r[1], width-names-len(gap)), "\n", "\n"+strings.Repeat(" ", names)+gap)
+		lines[i] = r[0] + strings.Repeat(" ", names-lipgloss.Width(r[0])) + gap + description
 	}
 	return strings.Join(lines, "\n")
 }
 
-// indent indents every line of the text.
-func indent(text, prefix string) string {
-	return prefix + strings.ReplaceAll(text, "\n", "\n"+prefix)
+// wrap breaks the lines of the text at spaces to fit into the width, at least a narrow column.
+func wrap(text string, width int) string {
+	return ansi.Wordwrap(text, max(width, minWrapWidth), "")
 }
 
 // helpFunc prints the help of a command with the colors the global flags allow.
 func helpFunc(a *App) func(*cobra.Command, []string) {
 	return func(cmd *cobra.Command, _ []string) {
 		_ = a.setup() // help skips the pre-run, the streams follow --no-color nonetheless
-		_, _ = fmt.Fprint(a.IO.Out, renderHelp(cmd))
+		_, _ = fmt.Fprint(a.IO.Out, renderHelp(cmd, a.IO.Width()))
 	}
 }

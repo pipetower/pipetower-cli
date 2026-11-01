@@ -1,116 +1,88 @@
-// Package prompt asks the user interactively, styled in the Pipetower theme.
+// Package prompt asks the user interactively with inline prompts in the Pipetower style: the
+// question with the input next to it, and after answering only the question and its answer.
 package prompt
 
 import (
 	"errors"
 	"io"
 
-	"charm.land/huh/v2"
-	"charm.land/lipgloss/v2"
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 
 	"github.com/pipetower/pipetower-cli/internal/fault"
-	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
 // Prompter asks questions. The interface keeps callers testable without a terminal.
 type Prompter interface {
-	Select(title string, options []string) (int, error)
-	MultiSelect(title string, options []string) ([]int, error)
-	Input(title, description string) (string, error)
+	Pick(title string, options []Option) (int, error)
+	PickMany(title string, options []Option) ([]int, error)
+	Input(title string) (string, error)
 	Confirm(title, affirmative, negative string) (bool, error)
 }
 
-// Huh asks with charm's huh forms. In and Out default to the terminal, Accessible asks
-// line by line instead of with an interactive form (screen readers, dumb terminals, tests).
-type Huh struct {
-	In         io.Reader
-	Out        io.Writer
-	Accessible bool
+// Terminal asks in the terminal. In and Out default to the terminal, Profile limits the colors,
+// e.g. to none with --no-color.
+type Terminal struct {
+	In      io.Reader
+	Out     io.Writer
+	Profile colorprofile.Profile
 }
 
-// Select lets the user choose one option and returns its index.
-func (h Huh) Select(title string, options []string) (int, error) {
-	var choice int
-	field := huh.NewSelect[int]().Title(title).Options(indexed(options)...).Value(&choice)
-	if len(options) > 8 {
-		field = field.Height(10).Filtering(false)
+// model is a prompt which ends answered or canceled.
+type model interface {
+	tea.Model
+	answered() bool
+}
+
+// Pick lets the user choose one of many options by typing a part of it and returns its index.
+func (t Terminal) Pick(title string, options []Option) (int, error) {
+	p := newPicker(title, options, false)
+	if err := t.run(p); err != nil {
+		return 0, err
 	}
-	return choice, h.run(field)
+	return p.selected[0], nil
 }
 
-// MultiSelect lets the user choose options and returns their indexes.
-func (h Huh) MultiSelect(title string, options []string) ([]int, error) {
-	var choices []int
-	field := huh.NewMultiSelect[int]().
-		Title(title).
-		Description("space to select · enter to confirm · / to filter").
-		Options(indexed(options)...).
-		Height(min(len(options), 10) + 3).
-		Value(&choices)
-	return choices, h.run(field)
+// PickMany lets the user choose one or several options and returns their indexes in the order of the options.
+func (t Terminal) PickMany(title string, options []Option) ([]int, error) {
+	p := newPicker(title, options, true)
+	if err := t.run(p); err != nil {
+		return nil, err
+	}
+	return p.selected, nil
 }
 
 // Input asks for a non-empty text.
-func (h Huh) Input(title, description string) (string, error) {
-	var value string
-	field := huh.NewInput().Title(title).Description(description).Value(&value).Validate(func(text string) error {
-		if text == "" {
-			return errors.New("a value is required")
-		}
-		return nil
-	})
-	return value, h.run(field)
+func (t Terminal) Input(title string) (string, error) {
+	i := newInput(title)
+	if err := t.run(i); err != nil {
+		return "", err
+	}
+	return i.field.Value(), nil
 }
 
-// Confirm asks a yes/no question.
-func (h Huh) Confirm(title, affirmative, negative string) (bool, error) {
-	var confirmed bool
-	field := huh.NewConfirm().Title(title).Affirmative(affirmative).Negative(negative).Value(&confirmed)
-	return confirmed, h.run(field)
+// Confirm asks a yes/no question as a choice between the affirmative and the negative answer.
+func (t Terminal) Confirm(title, affirmative, negative string) (bool, error) {
+	index, err := t.Pick(title, []Option{{Columns: []string{affirmative}}, {Columns: []string{negative}}})
+	return index == 0, err
 }
 
-// run shows a single field, aborting with Ctrl+C becomes a silent interrupt.
-func (h Huh) run(field huh.Field) error {
-	form := huh.NewForm(huh.NewGroup(field)).WithTheme(theme).WithShowHelp(false).WithAccessible(h.Accessible)
-	if h.In != nil {
-		form = form.WithInput(h.In)
+// run shows the prompt until it is answered; canceling becomes a silent interrupt.
+func (t Terminal) run(m model) error {
+	var opts []tea.ProgramOption
+	if t.In != nil {
+		opts = append(opts, tea.WithInput(t.In))
 	}
-	if h.Out != nil {
-		form = form.WithOutput(h.Out)
+	if t.Out != nil {
+		opts = append(opts, tea.WithOutput(t.Out))
+	}
+	if t.Profile != colorprofile.Unknown {
+		opts = append(opts, tea.WithColorProfile(t.Profile))
 	}
 
-	err := form.Run()
-	if errors.Is(err, huh.ErrUserAborted) {
+	_, err := tea.NewProgram(m, opts...).Run()
+	if errors.Is(err, tea.ErrInterrupted) || (err == nil && !m.answered()) {
 		return &fault.Silent{Code: fault.ExitInterrupted}
 	}
 	return err
 }
-
-// indexed creates options whose values are their positions.
-func indexed(labels []string) []huh.Option[int] {
-	options := make([]huh.Option[int], len(labels))
-	for i, label := range labels {
-		options[i] = huh.NewOption(label, i)
-	}
-	return options
-}
-
-// theme is the charm theme in Pipetower colors.
-var theme = huh.ThemeFunc(func(isDark bool) *huh.Styles {
-	t := huh.ThemeCharm(isDark)
-	brand := lipgloss.NewStyle().Foreground(ui.ColorBrand)
-
-	t.Focused.Title = t.Focused.Title.Foreground(ui.ColorBrand)
-	t.Focused.SelectSelector = brand.SetString("› ")
-	t.Focused.MultiSelectSelector = brand.SetString("› ")
-	t.Focused.NextIndicator = t.Focused.NextIndicator.Foreground(ui.ColorBrand)
-	t.Focused.PrevIndicator = t.Focused.PrevIndicator.Foreground(ui.ColorBrand)
-	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(ui.ColorGreen)
-	t.Focused.TextInput.Prompt = brand
-	t.Focused.FocusedButton = t.Focused.FocusedButton.Background(ui.ColorBrand)
-	t.Blurred = t.Focused
-	t.Blurred.Base = t.Focused.Base.BorderStyle(lipgloss.HiddenBorder())
-	t.Group.Title = t.Focused.Title
-
-	return t
-})

@@ -2,56 +2,60 @@ package prompt
 
 import (
 	"io"
+	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
-// terminalInput delivers one line per read, like a terminal does.
-type terminalInput struct{ lines []string }
-
-func (t *terminalInput) Read(p []byte) (int, error) {
-	if len(t.lines) == 0 {
-		return 0, io.EOF
-	}
-	line := t.lines[0] + "\n"
-	t.lines = t.lines[1:]
-	return copy(p, line), nil
-}
-
-// answering is a prompter in accessible mode which reads the given answer lines.
-func answering(lines ...string) Huh {
-	return Huh{In: &terminalInput{lines: lines}, Out: io.Discard, Accessible: true}
-}
-
-func TestSelectReturnsTheIndexOfTheChosenOption(t *testing.T) {
-	choice, err := answering("2").Select("Server", []string{"web-01", "web-02", "db-01"})
-
-	if err != nil || choice != 1 {
-		t.Errorf("choice = %d, err = %v, want 1", choice, err)
-	}
-}
-
-func TestMultiSelectReturnsAllChosenIndexes(t *testing.T) {
-	choices, err := answering("1", "3", "0").MultiSelect("Servers", []string{"web-01", "web-02", "db-01"})
-
-	if err != nil || len(choices) != 2 || choices[0] != 0 || choices[1] != 2 {
-		t.Errorf("choices = %v, err = %v, want [0 2]", choices, err)
-	}
-}
-
 func TestInputRequiresAValue(t *testing.T) {
-	value, err := answering("", "main").Input("branch", "")
+	i := newInput("Value of BRANCH?")
 
-	if err != nil || value != "main" {
-		t.Errorf("value = %q, err = %v, want the second, non-empty answer", value, err)
+	i.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if i.answered() || !i.empty {
+		t.Fatal("an empty value must not be accepted")
+	}
+
+	for _, r := range "main" {
+		i.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	i.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if !i.answered() || i.field.Value() != "main" {
+		t.Errorf("value = %q, answered = %v", i.field.Value(), i.answered())
 	}
 }
 
-func TestConfirm(t *testing.T) {
-	for answer, want := range map[string]bool{"y": true, "n": false} {
-		confirmed, err := answering(answer).Confirm("Terminate run?", "Terminate", "Keep running")
+func TestInputCanBeCanceled(t *testing.T) {
+	i := newInput("Value of BRANCH?")
 
-		if err != nil || confirmed != want {
-			t.Errorf("%q: confirmed = %v, err = %v", answer, confirmed, err)
-		}
+	i.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if i.answered() || !i.canceled {
+		t.Error("esc must cancel")
+	}
+}
+
+// answering is a terminal which reads the given keys as input.
+func answering(keys string) Terminal {
+	return Terminal{In: strings.NewReader(keys), Out: io.Discard}
+}
+
+func TestInputReturnsTheEnteredText(t *testing.T) {
+	value, err := answering("main\r").Input("Value of BRANCH?")
+	if err != nil || value != "main" {
+		t.Errorf("value = %q, err = %v", value, err)
+	}
+}
+
+func TestPickManyReturnsTheSelectedOptions(t *testing.T) {
+	chosen, err := answering("\t\t\r").PickMany("Which servers?", servers)
+	if err != nil || len(chosen) != 2 || chosen[0] != 0 || chosen[1] != 1 {
+		t.Errorf("chosen = %v, err = %v, want the first two", chosen, err)
+	}
+}
+
+func TestConfirmTakesTheChosenAnswer(t *testing.T) {
+	confirmed, err := answering("\x1b[B\r").Confirm("Terminate run?", "Yes", "No")
+	if err != nil || confirmed {
+		t.Errorf("confirmed = %v, err = %v, want no", confirmed, err)
 	}
 }

@@ -112,15 +112,6 @@ func (c *Client) Subscribe(topic string) error {
 	return c.Send(map[string]string{"type": "subscribe", "topic": topic})
 }
 
-// Unsubscribe stops receiving a topic.
-func (c *Client) Unsubscribe(topic string) error {
-	c.mu.Lock()
-	delete(c.topics, topic)
-	c.mu.Unlock()
-
-	return c.Send(map[string]string{"type": "unsubscribe", "topic": topic})
-}
-
 // Close ends the connection for good: it says goodbye to the gateway, then stops reconnecting.
 // Nothing is announced anymore, not even the closed connection.
 func (c *Client) Close() {

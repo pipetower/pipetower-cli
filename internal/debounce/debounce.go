@@ -41,9 +41,3 @@ func (d *Debounce) C() <-chan time.Time {
 func (d *Debounce) Fired() {
 	d.first = time.Time{}
 }
-
-// Stop cancels a scheduled firing.
-func (d *Debounce) Stop() {
-	d.timer.Stop()
-	d.first = time.Time{}
-}

@@ -119,9 +119,9 @@ func newRunnableRunCommand(a *App, kind runnableKind) *cobra.Command {
 		Long: "Run " + withArticle(kind.kind.Singular) + " on servers and follow every step live. Servers are given by\n" +
 			"name, id or tag:<tag>, missing variables are asked for.\n\n" + followHelp,
 		Example: "  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod -s tag:web -v branch=main",
-		Args:    args(kind.kind.Singular),
+		Args:    argOrPick(a, kind.kind.Singular),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			runnable, err := resolveRunnable(cmd.Context(), a, kind, argv[0])
+			runnable, err := resolveRunnable(cmd.Context(), a, kind, optionalArg(argv))
 			if err != nil {
 				return err
 			}
@@ -142,34 +142,34 @@ func resolveRunnable(ctx context.Context, a *App, kind runnableKind, arg string)
 }
 
 // renderRunnable renders the details of an action or workflow.
-func renderRunnable(r resolve.Runnable) string {
+func renderRunnable(r resolve.Runnable, width int) string {
 	lines := []string{"", " " + ui.Title.Render(r.Name()) + "  " + ui.Muted.Render(r.Type()+" · "+r.ID())}
 	if r.Action != nil && len(r.Action.Tags) > 0 {
 		lines = append(lines, " "+tags(r.Action.Tags))
 	}
 
 	lines = append(lines, "", ui.Bold.Render(" Variables"))
-	lines = append(lines, renderVariables(r.Variables())...)
+	lines = append(lines, renderVariables(r.Variables(), width)...)
 	lines = append(lines, "", ui.Bold.Render(" Steps"))
-	lines = append(lines, renderSteps(r)...)
+	lines = append(lines, renderSteps(r, width)...)
 
 	return strings.Join(lines, "\n") + "\n"
 }
 
 // renderVariables lists the variables needed on execution.
-func renderVariables(variables []api.VariableDefinition) []string {
+func renderVariables(variables []api.VariableDefinition, width int) []string {
 	if len(variables) == 0 {
 		return []string{ui.Muted.Render("   none")}
 	}
 	rows := make([][]string, len(variables))
 	for i, v := range variables {
-		rows[i] = []string{ui.Bold.Render(v.Name), ui.Muted.Render(v.Type), v.Values}
+		rows[i] = []string{ui.Bold.Render(v.Name), ui.Muted.Render(v.Type), strings.Join(selectionValues(v), ", ")}
 	}
-	return []string{indent(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows), "  ")}
+	return []string{ui.Indent(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows, width-2), "  ")}
 }
 
 // renderSteps lists the steps of an action or the actions of a workflow.
-func renderSteps(r resolve.Runnable) []string {
+func renderSteps(r resolve.Runnable, width int) []string {
 	var rows [][]string
 	if r.Action != nil {
 		for _, step := range r.Action.Steps {
@@ -187,7 +187,7 @@ func renderSteps(r resolve.Runnable) []string {
 	if len(rows) == 0 {
 		return []string{ui.Muted.Render("   none")}
 	}
-	return []string{indent(ui.Table([]string{"#", "STEP", "TYPE", ""}[:len(rows[0])], rows), "  ")}
+	return []string{ui.Indent(ui.Table([]string{"#", "STEP", "TYPE", ""}[:len(rows[0])], rows, width-2), "  ")}
 }
 
 // stepTypeLabel turns execute_shell_script into "shell script".

@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
-	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
@@ -68,7 +67,7 @@ func showList[T any](ctx context.Context, a *App, l listing[T]) error {
 	}
 	printTable(a, items, l)
 	if page.Meta.HasMore {
-		a.IO.Errorln(ui.Faint.Render(fmt.Sprintf(" Showing %d–%d of %d · use --page %d for more", page.Meta.From, page.Meta.To, page.Meta.Total, l.opts.Page+1)))
+		a.IO.Errorln(ui.Faint.Render(fmt.Sprintf("\n Showing %d–%d of %d · use --page %d for more", page.Meta.From, page.Meta.To, page.Meta.Total, l.opts.Page+1)))
 	}
 	return nil
 }
@@ -83,7 +82,7 @@ func printTable[T any](a *App, items []T, l listing[T]) {
 	for i, item := range items {
 		rows[i] = l.row(item)
 	}
-	a.IO.Println(ui.Table(l.headers, rows))
+	a.IO.Println(table(a, l.headers, rows))
 }
 
 // decodeItems decodes the raw items while keeping them for structured output.
@@ -98,11 +97,11 @@ func decodeItems[T any](raw []json.RawMessage) ([]T, []json.RawMessage, error) {
 }
 
 // showOne prints an already resolved resource rendered, or freshly fetched as raw data.
-func showOne[T any](ctx context.Context, a *App, value T, endpoint api.Endpoint, render func(T) string) error {
+func showOne[T any](ctx context.Context, a *App, value T, endpoint api.Endpoint, render func(T, int) string) error {
 	if a.Structured() {
 		return a.printEndpoint(ctx, endpoint)
 	}
-	a.IO.Println(render(value))
+	a.IO.Println(render(value, a.IO.TableWidth(0)))
 	return nil
 }
 
@@ -117,11 +116,6 @@ func (a *App) printEndpoint(ctx context.Context, endpoint api.Endpoint) error {
 		return err
 	}
 	return a.PrintRaw(raw)
-}
-
-// usageError explains a wrong invocation.
-func usageError(title, detail string) error {
-	return fault.New(fault.Problem{Title: title, Detail: detail, Code: fault.ExitUsage})
 }
 
 // orNotFound replaces a 404 of the API with an error which names the argument.
@@ -139,19 +133,19 @@ func addWebFlag(cmd *cobra.Command, web *bool) {
 
 // newViewCommand builds the view command of a kind: the item rendered in the terminal, as raw data
 // with --output, or opened in the web app with --web.
-func newViewCommand[T any](a *App, kind resolve.Kind, short string, find func(*resolve.Resolver, context.Context, string) (T, error), id func(T) string, render func(T) string) *cobra.Command {
+func newViewCommand[T any](a *App, kind resolve.Kind, short string, find func(*resolve.Resolver, context.Context, string) (T, error), id func(T) string, render func(T, int) string) *cobra.Command {
 	var web bool
 	cmd := &cobra.Command{
 		Use:        "view <" + kind.Singular + ">",
 		Short:      short,
 		SuggestFor: []string{"show"},
-		Args:       args(kind.Singular),
+		Args:       argOrPick(a, kind.Singular),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			resolver, err := a.Resolver(cmd.Context())
 			if err != nil {
 				return err
 			}
-			item, err := find(resolver, cmd.Context(), argv[0])
+			item, err := find(resolver, cmd.Context(), optionalArg(argv))
 			if err != nil {
 				return err
 			}
@@ -163,4 +157,20 @@ func newViewCommand[T any](a *App, kind resolve.Kind, short string, find func(*r
 	}
 	addWebFlag(cmd, &web)
 	return cmd
+}
+
+// addPageFlags adds --limit and --page.
+func addPageFlags(cmd *cobra.Command, page *pageOptions) {
+	cmd.Flags().IntVarP(&page.limit, "limit", "L", 25, "items per page, at most 100")
+	cmd.Flags().IntVar(&page.page, "page", 1, "page number")
+}
+
+// addSearchFlag adds --search to the list of a named resource.
+func addSearchFlag(cmd *cobra.Command, search *string, plural string) {
+	cmd.Flags().StringVar(search, "search", "", "only "+plural+" whose name contains this text")
+}
+
+// table renders a list as a table with the margin of the output, fitted into the terminal.
+func table(a *App, headers []string, rows [][]string) string {
+	return ui.Indent(ui.Table(headers, rows, a.IO.TableWidth(1)), " ")
 }

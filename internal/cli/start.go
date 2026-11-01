@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/runview"
 	"github.com/pipetower/pipetower-cli/internal/ui"
@@ -144,28 +144,7 @@ func pickServers(ctx context.Context, a *App, args []string) ([]api.Server, erro
 	if resolver.Prompter == nil {
 		return nil, usageError("No server given", "Choose servers with --server <name|id|tag:tag>, it can be repeated.")
 	}
-
-	servers, err := api.ListAll[api.Server](ctx, resolver.Client, api.Servers, api.ListOptions{Team: resolver.TeamID}, 500)
-	if err != nil {
-		return nil, err
-	}
-	labels := make([]string, len(servers))
-	for i, s := range servers {
-		labels[i] = fmt.Sprintf("%s  %s  %s", s.Name, ui.Faint.Render(s.Host), ui.Connection(s.Connected))
-	}
-	chosen, err := resolver.Prompter.MultiSelect("Run on which servers?", labels)
-	if err != nil {
-		return nil, err
-	}
-	if len(chosen) == 0 {
-		return nil, usageError("No server selected", "Select servers with space, or give them with --server.")
-	}
-
-	picked := make([]api.Server, len(chosen))
-	for i, index := range chosen {
-		picked[i] = servers[index]
-	}
-	return picked, nil
+	return resolver.PickServers(ctx)
 }
 
 // collectVariables combines --var flags with answers for the missing variables.
@@ -225,14 +204,18 @@ func parseVariables(definitions []api.VariableDefinition, flags []string) (map[s
 func askVariable(a *App, definition api.VariableDefinition) (string, error) {
 	prompter := a.Prompter()
 	if definition.Type == api.VariableSelection {
-		options := selectionValues(definition)
-		index, err := prompter.Select(definition.Name, options)
+		values := selectionValues(definition)
+		options := make([]prompt.Option, len(values))
+		for i, value := range values {
+			options[i] = prompt.Option{Columns: []string{value}}
+		}
+		index, err := prompter.Pick("Value of "+definition.Name+"?", options)
 		if err != nil {
 			return "", err
 		}
-		return options[index], nil
+		return values[index], nil
 	}
-	return prompter.Input(definition.Name, "Value of the variable "+definition.Name)
+	return prompter.Input("Value of " + definition.Name + "?")
 }
 
 // missingVariablesError explains which variables must be given.

@@ -10,6 +10,7 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/gateway"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/terminal"
 	"github.com/pipetower/pipetower-cli/internal/ui"
@@ -42,9 +43,9 @@ func newTerminalOpenCommand(a *App) *cobra.Command {
 		Short: "Open a shared terminal session on a server",
 		Long: "Open an interactive shell on a server through Pipetower. The session is shared:\n" +
 			"teammates can join it from the web or with pt terminal join.\n\n" + terminal.HelpText,
-		Args: args("server"),
+		Args: argOrPick(a, "server"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			return openTerminal(cmd.Context(), a, argv[0])
+			return openTerminal(cmd.Context(), a, optionalArg(argv))
 		},
 	}
 }
@@ -55,9 +56,9 @@ func newTerminalJoinCommand(a *App) *cobra.Command {
 		Use:   "join <session>",
 		Short: "Join a running terminal session of your team",
 		Long:  "Join a running terminal session, e.g. one opened in the web.\n\n" + terminal.HelpText,
-		Args:  args("session"),
+		Args:  argOrPick(a, "session"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			return joinTerminal(cmd.Context(), a, argv[0])
+			return joinTerminal(cmd.Context(), a, optionalArg(argv))
 		},
 	}
 }
@@ -103,7 +104,7 @@ func printSessions(a *App, sessions []gateway.LobbySession) {
 			ui.Code.Render("pt terminal join " + s.ID),
 		}
 	}
-	a.IO.Println(ui.Table([]string{"SERVER", "OWNER", "ATTACHED", "STARTED", "JOIN"}, rows))
+	a.IO.Println(table(a, []string{"SERVER", "OWNER", "ATTACHED", "STARTED", "JOIN"}, rows))
 }
 
 // openTerminal opens a new session on a server and attaches to it.
@@ -120,15 +121,53 @@ func openTerminal(ctx context.Context, a *App, arg string) error {
 	})
 }
 
-// joinTerminal attaches to an existing session.
+// joinTerminal attaches to an existing session, without an id to one the user picks.
 func joinTerminal(ctx context.Context, a *App, id string) error {
 	if err := requireTerminal(a); err != nil {
 		return err
+	}
+	if id == "" {
+		session, err := pickSession(ctx, a)
+		if err != nil {
+			return err
+		}
+		id = session.ID
 	}
 	return attachTerminal(ctx, a, "Joining the session…", func(ctx context.Context, client *api.Client) (api.Session, error) {
 		session, err := client.AttachSession(ctx, id)
 		return session, orNotFound(err, resolve.KindSession, id)
 	})
+}
+
+// pickSession lets the user choose one of the live sessions.
+func pickSession(ctx context.Context, a *App) (gateway.LobbySession, error) {
+	client, err := connectGateway(ctx, a)
+	if err != nil {
+		return gateway.LobbySession{}, err
+	}
+	sessions := client.Ready().Sessions
+	client.Close()
+	if len(sessions) == 0 {
+		return gateway.LobbySession{}, fault.New(fault.Problem{
+			Title: "No live terminal sessions",
+			Hints: []fault.Hint{{Label: "Open one with", Value: "pt terminal open <server>"}},
+			Code:  fault.ExitAPI,
+		})
+	}
+
+	options := make([]prompt.Option, len(sessions))
+	for i, s := range sessions {
+		started, _ := time.Parse(time.RFC3339, s.StartedAt)
+		options[i] = prompt.Option{
+			Mark:    ui.Success.Render("●"),
+			Columns: []string{s.Server.Name, s.Owner.Name, fmt.Sprintf("%d attached", len(s.Participants)), ui.Ago(&started, time.Now())},
+		}
+	}
+	index, err := a.Prompter().Pick("Which session?", options)
+	if err != nil {
+		return gateway.LobbySession{}, err
+	}
+	return sessions[index], nil
 }
 
 // requireTerminal fails before anything is opened when pt does not run in a terminal.

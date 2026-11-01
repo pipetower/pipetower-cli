@@ -72,7 +72,11 @@ func newVersionCommand(a *App) *cobra.Command {
 		Short: "Print the version of pt",
 		Args:  args(),
 		Run: func(*cobra.Command, []string) {
-			a.IO.Println(ui.Title.Render("pt") + " " + version.Version + ui.Muted.Render("  "+version.Commit+" · "+version.Date+" · "+runtime.Version()+" "+runtime.GOOS+"/"+runtime.GOARCH))
+			details := []string{version.Date, runtime.Version() + " " + runtime.GOOS + "/" + runtime.GOARCH}
+			if !strings.HasPrefix(version.Version, version.Commit) {
+				details = append([]string{version.Commit}, details...)
+			}
+			a.IO.Println(ui.Title.Render("pt") + " " + version.Version + ui.Muted.Render("  "+strings.Join(details, " · ")))
 		},
 	}
 }

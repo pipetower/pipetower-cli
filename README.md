@@ -69,8 +69,13 @@ Running takes `-s <server>` (repeatable), `-v name=value` (missing variables are
 accepts `--web` to open the item in the web app, every list of named items `--search`.
 `pt version` prints the version.
 
-Servers can be given by name, id or `tag:<tag>` (all servers with that tag). Ambiguous names
-open a picker in a terminal and fail with suggestions in scripts.
+Servers can be given by name, id or `tag:<tag>` (all servers with that tag).
+
+In a terminal, everything you leave out is asked for: `pt server view`, `pt workflow run` or
+`pt terminal join` without arguments open a picker which you narrow down by typing (fuzzy, also
+by host or tag); running asks for the servers (Tab selects several) and the missing variables.
+Ambiguous names open the same picker. What you give as argument or flag is never asked for, and
+in scripts, CI or with `--no-input` nothing is asked at all: missing values fail with a usage error.
 
 Global flags: `-o table|json|yaml`, `--no-input`, `--no-color` (or `NO_COLOR`), `--team`, `-h` (help).
 
@@ -104,13 +109,15 @@ or with `pt terminal join <session>`. After Enter, type `~.` to detach, `~c` to 
 make build     # bin/pt
 make test      # with the race detector
 make lint      # golangci-lint, same version as CI
+make fmt       # gofmt and goimports through golangci-lint
 make golden    # update the golden files after an intended change of a view, then review the diff
 make release-snapshot   # goreleaser, all platforms into dist/
 ```
 
 Packages: `cmd/pt` (entry), `internal/cli` (commands), `internal/api` (REST client),
 `internal/gateway` (WebSocket client), `internal/config` (.pipetower discovery),
-`internal/resolve` (names → resources), `internal/runview` (live runs),
-`internal/serverview` (dashboards), `internal/terminal` (sessions), `internal/present` (statuses, run rows),
-`internal/ui` (generic styles, tables, formatting),
-`internal/prompt` (interactive questions), `internal/fault` (errors and exit codes).
+`internal/resolve` (names → resources), `internal/prompt` (pickers and questions),
+`internal/runview` (live runs), `internal/serverview` (dashboards), `internal/terminal` (sessions),
+`internal/present` (statuses, run rows), `internal/ui` (generic styles, tables, formatting),
+`internal/fault` (errors and exit codes), `internal/browser` (opens the web app),
+`internal/debounce` (coalesces bursts of changes into one refetch), `internal/version` (build information).

@@ -73,6 +73,15 @@ func (o *IO) Width() int {
 	return 100
 }
 
+// TableWidth is the width a table indented by the margin fits into: the rest of the terminal width,
+// or 0 (no limit) when the output is no terminal, so that piped tables keep all values.
+func (o *IO) TableWidth(margin int) int {
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		return 0
+	}
+	return o.Width() - margin
+}
+
 // PrintJSON pretty-prints raw JSON, keeping the key order of the API.
 func (o *IO) PrintJSON(raw []byte) error {
 	var pretty bytes.Buffer

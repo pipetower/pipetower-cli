@@ -182,6 +182,26 @@ func TestWrongCallShowsTheUsage(t *testing.T) {
 	}
 }
 
+func TestWithoutTerminalResourcesMustBeGiven(t *testing.T) {
+	for missing, calls := range map[string][][]string{
+		"action":   {{"action", "view"}, {"action", "run"}},
+		"workflow": {{"workflow", "view"}, {"workflow", "run"}},
+		"run":      {{"run", "view"}, {"run", "watch"}, {"run", "cancel"}},
+		"server":   {{"server", "view"}, {"server", "connect"}, {"server", "disconnect"}, {"terminal", "open"}},
+		"session":  {{"terminal", "join"}},
+		"pipe":     {{"pipe", "view"}},
+		"template": {{"template", "view"}},
+		"team":     {{"team", "view"}},
+	} {
+		for _, call := range calls {
+			out := execute(t, fakeAPI{}, "test-token", call...)
+			if out.code != fault.ExitUsage || !strings.Contains(out.stderr, "Missing "+missing) {
+				t.Errorf("pt %v: exit %d, stderr:\n%s", call, out.code, out.stderr)
+			}
+		}
+	}
+}
+
 func TestHelpSeparatesOwnAndGlobalFlags(t *testing.T) {
 	out := execute(t, fakeAPI{}, "test-token", "run", "view", "--help")
 	own, global, found := strings.Cut(out.stdout, "GLOBAL FLAGS")

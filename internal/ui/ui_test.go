@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/pipetower/pipetower-cli/internal/fault"
@@ -72,5 +73,18 @@ func TestRenderProblemAlignsHints(t *testing.T) {
 func TestProblemOfPlainError(t *testing.T) {
 	if p := ProblemOf(errors.New("boom")); p.Title != "Boom" || p.Code != fault.ExitFailure {
 		t.Errorf("problem = %+v", p)
+	}
+}
+
+func TestTableFitsIntoTheWidth(t *testing.T) {
+	rows := [][]string{{"Jamil Soufan (owner), Jonas Gnioui (member), John Wagner (member)", "3meb4e"}}
+
+	for _, line := range strings.Split(Table([]string{"TEAM", "ID"}, rows, 40), "\n") {
+		if width := lipgloss.Width(line); width > 40 {
+			t.Errorf("line is %d wide, want at most 40: %q", width, line)
+		}
+	}
+	if out := Table([]string{"TEAM", "ID"}, rows, 0); !strings.Contains(out, "John Wagner (member)") {
+		t.Errorf("without a width nothing is shortened:\n%s", out)
 	}
 }

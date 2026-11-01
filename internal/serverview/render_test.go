@@ -27,7 +27,7 @@ func TestDashboardShowsMetrics(t *testing.T) {
 	}
 	runs := []api.Run{{ID: "35e1d2", Status: api.StatusSuccessful, Executable: &api.Reference{Type: "Workflow", Name: "Deploy Apdf"}, TriggeredBy: &api.Person{Name: "Jamil"}}}
 
-	out := ansi.Strip(Dashboard(server, runs, now))
+	out := ansi.Strip(Dashboard(server, runs, now, 100))
 
 	for _, want := range []string{"pipetower.com", "● Connected", "5.75.144.227:22", "Ubuntu 22.04.5 LTS", "49%", "4 × Intel Xeon", "3.3 GB of 7.6 GB", "26 GB of 75 GB", "0.61  0.69  0.67", "Measured 2 minutes ago", "Workflow Deploy Apdf", "#35e1d2"} {
 		if !strings.Contains(out, want) {
@@ -37,7 +37,7 @@ func TestDashboardShowsMetrics(t *testing.T) {
 }
 
 func TestDashboardOfDisconnectedServer(t *testing.T) {
-	out := ansi.Strip(Dashboard(api.Server{Name: "db 1", Host: "10.0.0.1", Port: 22}, nil, time.Now()))
+	out := ansi.Strip(Dashboard(api.Server{Name: "db 1", Host: "10.0.0.1", Port: 22}, nil, time.Now(), 100))
 
 	for _, want := range []string{"○ Disconnected", `pt server connect "db 1"`, "No runs yet"} {
 		if !strings.Contains(out, want) {

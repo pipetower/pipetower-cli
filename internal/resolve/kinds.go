@@ -7,6 +7,8 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
+	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
 // TagPrefix selects all servers with a tag, like tag:web.
@@ -82,6 +84,23 @@ func (r *Resolver) Servers(ctx context.Context, args []string) ([]api.Server, er
 	return servers, nil
 }
 
+// PickServers lets the user choose one or several of all servers.
+func (r *Resolver) PickServers(ctx context.Context) ([]api.Server, error) {
+	entries, err := all(ctx, r, KindServer, describeServer)
+	if err != nil {
+		return nil, err
+	}
+	chosen, err := r.Prompter.PickMany("Run on which servers?", options(entries))
+	if err != nil {
+		return nil, err
+	}
+	servers := make([]api.Server, len(chosen))
+	for i, index := range chosen {
+		servers[i] = entries[index].Item
+	}
+	return servers, nil
+}
+
 // serversOf resolves one argument to one or (for tags) more servers.
 func (r *Resolver) serversOf(ctx context.Context, arg string) ([]api.Server, error) {
 	tag, isTag := strings.CutPrefix(arg, TagPrefix)
@@ -103,14 +122,33 @@ func (r *Resolver) serversOf(ctx context.Context, arg string) ([]api.Server, err
 	return servers, nil
 }
 
+// describeServer shows a server with its host, and in pickers also with its connection and tags.
 func describeServer(s api.Server) entry[api.Server] {
-	return entry[api.Server]{s, s.ID, s.Name, s.Name + "  " + s.Host}
+	option := prompt.Option{Mark: ui.ConnectionMark(s.Connected), Columns: []string{s.Name, s.Host, tagList(s.Tags)}}
+	return entry[api.Server]{Item: s, ID: s.ID, Name: s.Name, Label: s.Name + "  " + s.Host, Option: option}
 }
 
+// describeAction shows an action by its name, in pickers also with its tags.
 func describeAction(a api.Action) entry[api.Action] {
-	return entry[api.Action]{a, a.ID, a.Name, a.Name}
+	return withTags(named(a, a.ID, a.Name), a.Tags)
 }
 
+// describeWorkflow shows a workflow by its name, in pickers also with its tags.
 func describeWorkflow(w api.Workflow) entry[api.Workflow] {
-	return entry[api.Workflow]{w, w.ID, w.Name, w.Name}
+	return withTags(named(w, w.ID, w.Name), w.Tags)
+}
+
+// withTags adds the tags of an item as a column of its picker option.
+func withTags[T any](e entry[T], tags []api.Tag) entry[T] {
+	e.Option.Columns = append(e.Option.Columns, tagList(tags))
+	return e
+}
+
+// tagList lists tags as #name.
+func tagList(tags []api.Tag) string {
+	names := make([]string, len(tags))
+	for i, tag := range tags {
+		names[i] = "#" + tag.Name
+	}
+	return strings.Join(names, " ")
 }

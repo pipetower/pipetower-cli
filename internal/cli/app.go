@@ -111,7 +111,7 @@ func (a *App) Prompter() prompt.Prompter {
 	if !a.IO.CanPrompt {
 		return nil
 	}
-	return prompt.Huh{}
+	return prompt.Terminal{Profile: a.IO.Profile}
 }
 
 // Resolver returns a resolver which asks the user when allowed, limited to the team of --team.

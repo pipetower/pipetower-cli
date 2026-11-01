@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
@@ -109,12 +109,12 @@ func forEachCommand(cmd *cobra.Command, call func(*cobra.Command)) {
 	}
 }
 
-// showLogo prints the logo of Pipetower above the help when pt runs without a command.
+// showLogo prints the logo of Pipetower above the help when pt runs without a command and the terminal is wide enough.
 func showLogo(a *App, root *cobra.Command) {
 	help := root.RunE
 	root.RunE = func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 {
-			a.IO.Println("\n" + ui.Logo())
+		if logo := ui.Logo(); len(args) == 0 && lipgloss.Width(logo) <= a.IO.Width() {
+			a.IO.Println("\n" + logo) // only where it fits, a wrapped logo is broken
 		}
 		return help(cmd, args)
 	}
@@ -144,26 +144,4 @@ func unknownCommand(cmd *cobra.Command, name string) error {
 	}
 	problem.Hints = append(problem.Hints, fault.Hint{Label: "See", Value: cmd.CommandPath() + " --help"})
 	return fault.New(problem)
-}
-
-// args requires exactly the named positional arguments and explains missing ones.
-func args(names ...string) cobra.PositionalArgs {
-	return func(cmd *cobra.Command, given []string) error {
-		if len(given) == len(names) {
-			return nil
-		}
-		if len(given) < len(names) {
-			return usageProblem(cmd, "Missing "+names[len(given)])
-		}
-		return usageProblem(cmd, "Too many arguments: "+strings.Join(given[len(names):], " "))
-	}
-}
-
-// usageProblem explains a wrong call of the command: what is wrong, how it is called and where its help is.
-func usageProblem(cmd *cobra.Command, title string) error {
-	return fault.New(fault.Problem{
-		Title: title,
-		Hints: []fault.Hint{{Label: "Usage", Value: usageLine(cmd)}, {Label: "See", Value: cmd.CommandPath() + " --help"}},
-		Code:  fault.ExitUsage,
-	})
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
+	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/prompt"
 )
 
@@ -46,12 +47,18 @@ type Resolver struct {
 	TeamID string
 }
 
-// entry is a resolvable item with its id, name and the label shown in pickers.
+// entry is a resolvable item with its id, name, the label shown in messages and the option shown in pickers.
 type entry[T any] struct {
-	Item  T
-	ID    string
-	Name  string
-	Label string
+	Item   T
+	ID     string
+	Name   string
+	Label  string
+	Option prompt.Option
+}
+
+// named describes an item which is shown by its name only.
+func named[T any](item T, id, name string) entry[T] {
+	return entry[T]{Item: item, ID: id, Name: name, Label: name, Option: prompt.Option{Columns: []string{name}}}
 }
 
 // Server resolves one server by id or name.
@@ -71,23 +78,26 @@ func (r *Resolver) Workflow(ctx context.Context, arg string) (api.Workflow, erro
 
 // Pipe resolves one pipe by id or name.
 func (r *Resolver) Pipe(ctx context.Context, arg string) (api.Pipe, error) {
-	return find(ctx, r, KindPipe, arg, func(p api.Pipe) entry[api.Pipe] { return entry[api.Pipe]{p, p.ID, p.Name, p.Name} })
+	return find(ctx, r, KindPipe, arg, func(p api.Pipe) entry[api.Pipe] { return named(p, p.ID, p.Name) })
 }
 
 // Template resolves one template by id or name.
 func (r *Resolver) Template(ctx context.Context, arg string) (api.Template, error) {
-	return find(ctx, r, KindTemplate, arg, func(t api.Template) entry[api.Template] {
-		return entry[api.Template]{t, t.ID, t.Name, t.Name}
-	})
+	return find(ctx, r, KindTemplate, arg, func(t api.Template) entry[api.Template] { return named(t, t.ID, t.Name) })
 }
 
 // Team resolves one team by id or name.
 func (r *Resolver) Team(ctx context.Context, arg string) (api.Team, error) {
-	return find(ctx, r, KindTeam, arg, func(t api.Team) entry[api.Team] { return entry[api.Team]{t, t.ID, t.Name, t.Name} })
+	return find(ctx, r, KindTeam, arg, func(t api.Team) entry[api.Team] { return named(t, t.ID, t.Name) })
 }
 
 // find resolves an argument: exact name, then id, then a choice among partial matches.
+// Without an argument the user picks one of all items.
 func find[T any](ctx context.Context, r *Resolver, kind Kind, arg string, describe func(T) entry[T]) (T, error) {
+	if arg == "" {
+		return pick(ctx, r, kind, describe)
+	}
+
 	var zero T
 	entries, err := search(ctx, r, kind.Resource, arg, describe)
 	if err != nil {
@@ -162,6 +172,33 @@ func exactMatches[T any](entries []entry[T], arg string) []entry[T] {
 	return matches
 }
 
+// pick lets the user choose one of all items, filtered by typing.
+func pick[T any](ctx context.Context, r *Resolver, kind Kind, describe func(T) entry[T]) (T, error) {
+	var zero T
+	if r.Prompter == nil {
+		return zero, fault.New(fault.Problem{Title: "Missing " + kind.Singular, Code: fault.ExitUsage})
+	}
+	entries, err := all(ctx, r, kind, describe)
+	if err != nil {
+		return zero, err
+	}
+
+	index, err := r.Prompter.Pick("Which "+kind.Singular+"?", options(entries))
+	if err != nil {
+		return zero, err
+	}
+	return entries[index].Item, nil
+}
+
+// all lists all items of a kind to pick from, at least one.
+func all[T any](ctx context.Context, r *Resolver, kind Kind, describe func(T) entry[T]) ([]entry[T], error) {
+	entries, err := search(ctx, r, kind.Resource, "", describe)
+	if err == nil && len(entries) == 0 {
+		return nil, fault.New(fault.Problem{Title: "No " + kind.Plural + " found", Code: fault.ExitAPI})
+	}
+	return entries, err
+}
+
 // choose returns an exact match, or lets the user pick among the candidates. Without a
 // prompter only an unambiguous exact match is accepted, partial matches become suggestions.
 func choose[T any](r *Resolver, kind Kind, arg string, entries []entry[T], exact bool) (T, error) {
@@ -177,14 +214,23 @@ func choose[T any](r *Resolver, kind Kind, arg string, entries []entry[T], exact
 		return zero, &NotFoundError{Kind: kind, Arg: arg, Suggestions: labels(entries)}
 	}
 
-	index, err := r.Prompter.Select("Which "+kind.Singular+" do you mean by “"+arg+"”?", labels(entries))
+	index, err := r.Prompter.Pick("Which "+kind.Singular+" do you mean by “"+arg+"”?", options(entries))
 	if err != nil {
 		return zero, err
 	}
 	return entries[index].Item, nil
 }
 
-// labels returns the picker labels of the entries.
+// options returns the picker options of the entries.
+func options[T any](entries []entry[T]) []prompt.Option {
+	result := make([]prompt.Option, len(entries))
+	for i, e := range entries {
+		result[i] = e.Option
+	}
+	return result
+}
+
+// labels returns the labels of the entries, for messages.
 func labels[T any](entries []entry[T]) []string {
 	result := make([]string, len(entries))
 	for i, e := range entries {

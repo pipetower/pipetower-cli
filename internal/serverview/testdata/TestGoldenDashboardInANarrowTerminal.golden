@@ -1,0 +1,19 @@
+ ╭─────────────────────────────────────────────────────────╮
+ │  pipetower.com                             ● Connected  │
+ │  5.75.144.227:22  #prod                                 │
+ │                                                         │
+ │  Hostname  prod                      OS      Ubuntu 2…  │
+ │  Kernel    Linux 5.15.0-176-generic  Arch    x86-64     │
+ │                                                         │
+ │  CPU       ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱   49%   4 × Intel Xeon Pr…  │
+ │  Memory    ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱   44%   3.3 GB of 7.6 GB    │
+ │  Disk      ▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱   35%   26 GB of 75 GB      │
+ │  Load      0.61  0.69  0.67     1m · 5m · 15m           │
+ │                                                         │
+ │  Measured 2 minutes ago                                 │
+ ╰─────────────────────────────────────────────────────────╯
+
+ Latest runs
+      RUN                  BY          WHEN         DURATION
+  ●   Action …   #4k1x9z   Jamil So…   just now     20s     
+  ✓   Workflo…   #35e1d2   Jamil So…   2 days ago   2m 06s  

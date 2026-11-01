@@ -1,19 +1,19 @@
-╭────────────────────────────────────────────────────────────────────────────╮
-│  pipetower.com                                                ● Connected  │
-│  5.75.144.227:22  #prod                                                    │
-│                                                                            │
-│  Hostname  prod                    OS      Ubuntu 22.04.5 LTS              │
-│  Kernel    Linux 6.8.0             Arch    x86-64                          │
-│                                                                            │
-│  CPU       ▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱   49%   4 × Intel Xeon Processor (Skyla…   │
-│  Memory    ▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱   44%   3.3 GB of 7.6 GB                   │
-│  Disk      ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱   35%   26 GB of 75 GB                     │
-│  Load       0.61  0.69  0.67    1m · 5m · 15m                              │
-│                                                                            │
-│  Measured 2 minutes ago                                                    │
-╰────────────────────────────────────────────────────────────────────────────╯
+ ╭────────────────────────────────────────────────────────────────────────────╮
+ │  pipetower.com                                                ● Connected  │
+ │  5.75.144.227:22  #prod                                                    │
+ │                                                                            │
+ │  Hostname  prod                      OS      Ubuntu 22.04.5 LTS            │
+ │  Kernel    Linux 5.15.0-176-generic  Arch    x86-64                        │
+ │                                                                            │
+ │  CPU       ▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱   49%   4 × Intel Xeon Processor (Skyla…   │
+ │  Memory    ▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱   44%   3.3 GB of 7.6 GB                   │
+ │  Disk      ▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱   35%   26 GB of 75 GB                     │
+ │  Load      0.61  0.69  0.67     1m · 5m · 15m                              │
+ │                                                                            │
+ │  Measured 2 minutes ago                                                    │
+ ╰────────────────────────────────────────────────────────────────────────────╯
 
-  Latest runs
-      RUN                              BY             WHEN         DURATION   
-  ●   Action Restart PHP     #4k1x9z   Jamil Soufan   just now     20s        
-  ✓   Workflow Deploy Apdf   #35e1d2   Jamil Soufan   2 days ago   2m 06s     
+ Latest runs
+      RUN                              BY             WHEN         DURATION
+  ●   Action Restart PHP     #4k1x9z   Jamil Soufan   just now     20s     
+  ✓   Workflow Deploy Apdf   #35e1d2   Jamil Soufan   2 days ago   2m 06s  

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 )
 
 // fakeAPI serves servers and actions filtered by the search parameter.
@@ -78,12 +79,18 @@ type fakePrompter struct {
 	titles []string
 }
 
-func (f *fakePrompter) Select(title string, options []string) (int, error) {
-	f.titles, f.asked = append(f.titles, title), options
+func (f *fakePrompter) Pick(title string, options []prompt.Option) (int, error) {
+	f.titles, f.asked = append(f.titles, title), nil
+	for _, option := range options {
+		f.asked = append(f.asked, option.Columns[0])
+	}
 	return f.pick, nil
 }
-func (f *fakePrompter) MultiSelect(string, []string) ([]int, error) { return nil, nil }
-func (f *fakePrompter) Input(string, string) (string, error)        { return "", nil }
+func (f *fakePrompter) PickMany(title string, options []prompt.Option) ([]int, error) {
+	index, err := f.Pick(title, options)
+	return []int{index}, err
+}
+func (f *fakePrompter) Input(string) (string, error) { return "", nil }
 func (f *fakePrompter) Confirm(string, string, string) (bool, error) {
 	return false, nil
 }
@@ -147,5 +154,23 @@ func TestUnknownTag(t *testing.T) {
 	var notFound *NotFoundError
 	if !errors.As(err, &notFound) {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestWithoutArgumentTheUserPicksAmongAll(t *testing.T) {
+	prompter := &fakePrompter{pick: 2}
+	r := &Resolver{Client: fakeAPI(t), Prompter: prompter}
+
+	server, err := r.Server(context.Background(), "")
+	if err != nil || server.ID != "srv3" || len(prompter.asked) != 3 {
+		t.Fatalf("server = %+v, err = %v, asked %v", server, err, prompter.asked)
+	}
+}
+
+func TestWithoutArgumentAndPrompterTheArgumentIsMissing(t *testing.T) {
+	r := &Resolver{Client: fakeAPI(t)}
+
+	if _, err := r.Server(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "Missing server") {
+		t.Fatalf("err = %v, want the missing server", err)
 	}
 }

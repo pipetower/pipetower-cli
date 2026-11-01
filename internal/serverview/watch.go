@@ -48,17 +48,18 @@ type watchModel struct {
 	err      error
 	state    string
 	now      time.Time
+	width    int
 	// requested and shown number the fetches, so that a slow older fetch never replaces a newer one
 	requested int
 	shown     int
 }
 
-// Watch shows the dashboard and refreshes it whenever the gateway reports a change.
-func Watch(ctx context.Context, initial Snapshot, fetch Fetcher, connect gateway.Connector, out io.Writer, profile colorprofile.Profile) error {
+// Watch shows the dashboard at the width of the terminal and refreshes it whenever the gateway reports a change.
+func Watch(ctx context.Context, initial Snapshot, fetch Fetcher, connect gateway.Connector, out io.Writer, profile colorprofile.Profile, width int) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	m := &watchModel{ctx: ctx, fetch: fetch, snapshot: initial, state: "connecting", now: time.Now()}
+	m := &watchModel{ctx: ctx, fetch: fetch, snapshot: initial, state: "connecting", now: time.Now(), width: width}
 	program := tea.NewProgram(m, tea.WithContext(ctx), tea.WithOutput(out), tea.WithColorProfile(profile))
 
 	go listen(ctx, initial.Server.ID, connect, func(msg tea.Msg) { program.Send(msg) })
@@ -157,6 +158,8 @@ func (m *watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case liveMsg:
 		m.state = msg.state
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
 	case clockMsg:
 		m.now = time.Time(msg)
 		return m, tick()
@@ -178,7 +181,7 @@ func (m *watchModel) load(seq int) tea.Cmd {
 
 // View renders the dashboard and the live status line.
 func (m *watchModel) View() tea.View {
-	return tea.NewView(Dashboard(m.snapshot.Server, m.snapshot.Runs, m.now) + "\n" + m.status() + "\n")
+	return tea.NewView(Dashboard(m.snapshot.Server, m.snapshot.Runs, m.now, m.width) + "\n\n" + m.status() + "\n")
 }
 
 // status renders how updates arrive and the key help.

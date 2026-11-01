@@ -63,9 +63,9 @@ func newServerViewCommand(a *App) *cobra.Command {
 		SuggestFor: []string{"show"},
 		Short:      "View the dashboard of a server: system, usage and latest runs",
 		Example:    "  pt server view prod\n  pt server view prod --watch",
-		Args:       args("server"),
+		Args:       argOrPick(a, "server"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			return viewServer(cmd.Context(), a, argv[0], watch, web)
+			return viewServer(cmd.Context(), a, optionalArg(argv), watch, web)
 		},
 	}
 	cmd.Flags().BoolVar(&watch, "watch", false, "keep the dashboard open and update it live")
@@ -92,13 +92,13 @@ func viewServer(ctx context.Context, a *App, arg string, watch, web bool) error 
 		return err
 	}
 	if !watch {
-		a.IO.Println(serverview.Dashboard(snapshot.Server, snapshot.Runs, time.Now()))
+		a.IO.Println(serverview.Dashboard(snapshot.Server, snapshot.Runs, time.Now(), a.IO.Width()))
 		return nil
 	}
 	if !a.IO.Terminal {
 		return usageError("--watch needs an interactive terminal", "Run it without --watch to print the dashboard once.")
 	}
-	return serverview.Watch(ctx, snapshot, fetch, a.Connector(), a.IO.RawOut, a.IO.Profile)
+	return serverview.Watch(ctx, snapshot, fetch, a.Connector(), a.IO.RawOut, a.IO.Profile, a.IO.Width())
 }
 
 // serverSnapshot loads a server with its latest runs.
@@ -128,9 +128,9 @@ func newServerConnectCommand(a *App, connect bool) *cobra.Command {
 	return &cobra.Command{
 		Use:   use,
 		Short: short,
-		Args:  args("server"),
+		Args:  argOrPick(a, "server"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
-			server, err := resolveServer(cmd.Context(), a, argv[0])
+			server, err := resolveServer(cmd.Context(), a, optionalArg(argv))
 			if err != nil {
 				return err
 			}
@@ -160,15 +160,4 @@ func resolveServer(ctx context.Context, a *App, arg string) (api.Server, error) 
 		return api.Server{}, err
 	}
 	return resolver.Server(ctx, arg)
-}
-
-// addPageFlags adds --limit and --page.
-func addPageFlags(cmd *cobra.Command, page *pageOptions) {
-	cmd.Flags().IntVarP(&page.limit, "limit", "L", 25, "items per page, at most 100")
-	cmd.Flags().IntVar(&page.page, "page", 1, "page number")
-}
-
-// addSearchFlag adds --search to the list of a named resource.
-func addSearchFlag(cmd *cobra.Command, search *string, plural string) {
-	cmd.Flags().StringVar(search, "search", "", "only "+plural+" whose name contains this text")
 }
