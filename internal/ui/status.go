@@ -5,13 +5,13 @@ func Connection(connected bool) string {
 	if connected {
 		return ConnectionMark(true) + Success.Render(" Connected")
 	}
-	return ConnectionMark(false) + Faint.Render(" Disconnected")
+	return ConnectionMark(false) + Muted.Render(" Disconnected")
 }
 
-// ConnectionMark renders the connection state of a server as a dot.
+// ConnectionMark renders the connection state of a server as a dot, green or gray like in the web app.
 func ConnectionMark(connected bool) string {
 	if connected {
 		return Success.Render("●")
 	}
-	return Faint.Render("○")
+	return Muted.Render("●")
 }

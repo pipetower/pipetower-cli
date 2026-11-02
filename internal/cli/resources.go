@@ -137,16 +137,16 @@ func trigger(t api.PipeTrigger) string {
 // active renders whether a pipe is active.
 func active(isActive bool) string {
 	if isActive {
-		return ui.Success.Render("● active")
+		return ui.Accent.Render("● on") // cyan like the switch in the web app
 	}
-	return ui.Faint.Render("○ inactive")
+	return ui.Muted.Render("○ off")
 }
 
 // renderTeam renders the members of a team with their roles.
 func renderTeam(t api.Team, width int) string {
 	rows := make([][]string, len(t.Members))
 	for i, m := range t.Members {
-		twoFactor := ui.Faint.Render("–")
+		twoFactor := ui.Danger.Render("✗") // like the web app: green when enabled, red when not
 		if m.TwoFactor {
 			twoFactor = ui.Success.Render("✓")
 		}

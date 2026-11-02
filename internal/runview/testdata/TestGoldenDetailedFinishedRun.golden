@@ -3,14 +3,14 @@
  ✗ prod  5.75.144.227                                                                   failed · 9s
    ✗ Deploy app                                                                                  9s
      ✓ Create release dir                                                                        1s
-     ⊘ Clear cache  conditions not met                                                           0s
+     ⊖ Clear cache  conditions not met                                                           0s
      ✗ Clone git repo  exit 128                                                                  8s
        │ Cloning into '.'...
        │ fatal: repository not found
-     ◌ Install dependencies
-   ◌ Restart PHP
- ⚠ staging  10.0.0.4                                                               not allowed · 0s
-   ⚠ Deploy app  Not allowed to run on this server                                               0s
+     ⊘ Install dependencies
+   ⊘ Restart PHP
+ ⊗ staging  10.0.0.4                                                               not allowed · 0s
+   ⊗ Deploy app  Not allowed to run on this server                                               0s
 
  ✗ Failed  in 9s · 0 of 2 servers succeeded
    Log of prod: pt run view 30denr --log --server prod

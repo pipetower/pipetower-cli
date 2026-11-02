@@ -163,7 +163,11 @@ func (v *view) step(step *api.Step, depth int) {
 	if step.Status == api.StatusPending {
 		name = ui.Faint.Render(name)
 	}
-	v.row(depth, v.icon(step.Status)+" "+name+v.note(step), v.duration(step))
+	icon := v.icon(step.Status)
+	if step.Type == api.StepAction && !v.spinning(step.Status) {
+		icon = present.StepIcon(step.Status)
+	}
+	v.row(depth, icon+" "+name+v.note(step), v.duration(step))
 
 	if step.Type == api.StepWorkflow && (v.mode == modeDetailed || step.Status == api.StatusRunning || expands(step.Status)) {
 		v.steps(step.Steps, depth+1)
@@ -235,12 +239,17 @@ func (v *view) statusTime(status string, start, end *time.Time) string {
 	return ui.Fg(look.Color).Render(text)
 }
 
-// icon renders the status icon, running statuses as the spinner.
+// icon renders the status icon, running statuses as the spinner (yellow, like in the web app).
 func (v *view) icon(status string) string {
-	if status == api.StatusRunning && (v.mode == modeLive || v.mode == modeCompact) {
-		return ui.Accent.Render(v.spinner)
+	if v.spinning(status) {
+		return ui.Fg(present.Status(status).Color).Render(v.spinner)
 	}
 	return present.StatusIcon(status)
+}
+
+// spinning tells whether the status is shown as the spinner.
+func (v *view) spinning(status string) bool {
+	return status == api.StatusRunning && (v.mode == modeLive || v.mode == modeCompact)
 }
 
 // row renders a line with indentation and a right-aligned part.

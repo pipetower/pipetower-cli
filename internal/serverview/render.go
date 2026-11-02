@@ -52,7 +52,7 @@ func Dashboard(server api.Server, runs []api.Run, now time.Time, width int) stri
 	}
 	content := fitLines(strings.Join(sections, "\n\n"), inner)
 
-	return ui.Indent(card.Width(outer).Render(content), " ") + "\n" + latestRuns(runs, now, width)
+	return ui.Indent(card.Width(outer).Render(content), " ") + "\n" + latestRuns(server.ID, runs, now, width)
 }
 
 // heading renders the name, address, tags and connection state.
@@ -147,8 +147,9 @@ func noMetrics(server api.Server) string {
 	return ui.Muted.Render("No metrics measured yet, they appear within a minute.")
 }
 
-// latestRuns renders the latest runs of the server below the card.
-func latestRuns(runs []api.Run, now time.Time, width int) string {
+// latestRuns renders the latest runs of the server below the card, each with its status on this
+// server like in the web app: a run on several servers may fail on one and succeed on another.
+func latestRuns(serverID string, runs []api.Run, now time.Time, width int) string {
 	heading := "\n " + ui.Bold.Render("Latest runs") + "\n"
 	if len(runs) == 0 {
 		return heading + ui.Muted.Render("  No runs yet")
@@ -156,6 +157,7 @@ func latestRuns(runs []api.Run, now time.Time, width int) string {
 
 	rows := make([][]string, 0, len(runs))
 	for _, run := range runs {
+		run.Status = statusOn(run, serverID)
 		rows = append(rows, present.RunRow(run, now))
 	}
 	return heading + ui.Indent(ui.Table(present.RunHeaders, rows, width-2), "  ")
@@ -163,12 +165,7 @@ func latestRuns(runs []api.Run, now time.Time, width int) string {
 
 // ListRow renders a server as a row of the server list.
 func ListRow(server api.Server) []string {
-	status := ui.Success.Render("●")
-	if !server.Connected {
-		status = ui.Faint.Render("○")
-	}
-
-	row := []string{status + " " + ui.Bold.Render(server.Name), ui.Muted.Render(server.Host)}
+	row := []string{ui.ConnectionMark(server.Connected) + " " + ui.Bold.Render(server.Name), ui.Muted.Render(server.Host)}
 	if m := server.Metrics; m != nil {
 		return append(row, mini(m.CPU.UsagePercent), mini(m.Memory.UsedPercent), mini(m.Disk.UsedPercent), load1(m))
 	}
@@ -215,4 +212,14 @@ func fitLines(text string, width int) string {
 		lines[i] = ansi.Truncate(line, width, "…")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// statusOn returns the status of the run's execution on the server, or the run's status without one.
+func statusOn(run api.Run, serverID string) string {
+	for _, execution := range run.Executions {
+		if execution.Server.ID == serverID {
+			return execution.Status
+		}
+	}
+	return run.Status
 }

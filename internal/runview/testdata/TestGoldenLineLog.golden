@@ -3,17 +3,17 @@
 [prod]   ▶ Create release dir
 [prod]   │ export.release_dir=/var/www/releases/20261031
 [prod]   ✓ Create release dir  successful · 1s
-[prod]   ⊘ Clear cache  skipped · conditions not met
+[prod]   ⊖ Clear cache  skipped · conditions not met
 [prod]   ▶ Clone git repo
 [prod]   │ Cloning into '.'...
 --- after the run finished ---
 [prod]   │ Receiving objects:  54% (671/1241)
 [prod]   │ fatal: repository not found
 [prod]   ✗ Clone git repo  failed · 8s · exit 128
-[prod]   ◌ Install dependencies  canceled
+[prod]   ⊘ Install dependencies  canceled
 [prod] ✗ Deploy app  failed · 9s
-[prod] ◌ Restart PHP  canceled
+[prod] ⊘ Restart PHP  canceled
 [staging] ▶ Deploy app
-[staging] ⚠ Deploy app  not allowed · 0s · Not allowed to run on this server
+[staging] ⊗ Deploy app  not allowed · 0s · Not allowed to run on this server
 ✗ prod  failed in 9s
-⚠ staging  not allowed in 0s
+⊗ staging  not allowed in 0s

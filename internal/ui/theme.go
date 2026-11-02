@@ -14,7 +14,7 @@ var (
 	ColorGreen  = lipgloss.Color("#22C55E")
 	ColorRed    = lipgloss.Color("#EF4444")
 	ColorYellow = lipgloss.Color("#EAB308")
-	ColorOrange = lipgloss.Color("#F97316")
+	ColorAmber  = lipgloss.Color("#D97706")
 	ColorBlue   = lipgloss.Color("#3B82F6")
 	ColorMuted  = lipgloss.Color("#8A8F98")
 	ColorFaint  = lipgloss.Color("#5F6670")

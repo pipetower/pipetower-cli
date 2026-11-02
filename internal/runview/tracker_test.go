@@ -144,7 +144,7 @@ func TestRenderRunShowsTailOfRunningStep(t *testing.T) {
 
 	out := ansi.Strip(renderRun(tracker, time.Now(), "⠹", 100, modeLive))
 
-	for _, want := range []string{"▶ Deploy App", "Workflow · #r1 · 1 server", "⠹ prod", "✓ Create release dir", "⠹ Clone git repo", "│ Receiving objects: 54% (671/1241)", "○ Install"} {
+	for _, want := range []string{"▶ Deploy App", "Workflow · #r1 · 1 server", "⠹ prod", "✓ Create release dir", "⠹ Clone git repo", "│ Receiving objects: 54% (671/1241)", "◷ Install"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
