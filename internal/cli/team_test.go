@@ -33,19 +33,16 @@ func executeInProject(t *testing.T, routes fakeAPI, team string, args ...string)
 	return run(t, dir, args...), file
 }
 
-func TestTheTeamOfTheProjectLimitsListsAndIsNamed(t *testing.T) {
+func TestTheTeamOfTheProjectLimitsLists(t *testing.T) {
 	routes := fakeAPI{
 		"GET /api/v1/teams?limit=100&search=Ops": opsTeam,
 		"GET /api/v1/servers?limit=25&team=t1":   serversPage,
 	}
 
-	out, file := executeInProject(t, routes, "Ops", "server", "list")
+	out, _ := executeInProject(t, routes, "Ops", "server", "list")
 
-	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "web-01") {
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "web-01") || strings.Contains(out.stderr, "Team Ops") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", out.code, out.stdout, out.stderr)
-	}
-	if !strings.Contains(out.stderr, "Team Ops · set in "+file+" · --all-teams for all") {
-		t.Errorf("the limited list does not name its team:\n%s", out.stderr)
 	}
 }
 

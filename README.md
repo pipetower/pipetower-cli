@@ -73,8 +73,8 @@ PIPETOWER_TEAM=Ops
 ```
 
 In `~/code/project-1` and below, pt shows only the resources of Ops; elsewhere those of all your teams.
-`--team <name>` overrides the team for one command, `--all-teams` lifts it. Lists name the team and its
-file below them, and `pt status` shows it. Keep the project's `.pipetower` in `.gitignore` like any
+`--team <name>` overrides the team for one command, `--all-teams` lifts it. `pt status` shows the team
+and the file it comes from. Keep the project's `.pipetower` in `.gitignore` like any
 other: should a token ever be added to it, it must not be committed.
 
 pt only uses files which belong to you, accepts `http://` (and a `ws://` real-time gateway) only for

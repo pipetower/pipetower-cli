@@ -85,9 +85,6 @@ func newTerminalListCommand(a *App) *cobra.Command {
 				return a.PrintValue(sessions)
 			}
 			printSessions(a, sessions)
-			if note := a.teamNote(); note != "" {
-				a.IO.Errorln("\n" + note)
-			}
 			return nil
 		},
 	}

@@ -189,16 +189,6 @@ func teamProblem(err error, source config.Source) error {
 	return &fault.Error{P: problem, Cause: err}
 }
 
-// teamNote names the team which limits a list when the configuration set it, so that a limited list
-// is never taken for all; empty without such a team.
-func (a *App) teamNote() string {
-	_, source, err := a.teamSetting()
-	if err != nil || !a.resolved || source == (config.Source{}) {
-		return ""
-	}
-	return ui.Faint.Render(" Team " + a.team.Name + " · set in " + source.String() + " · --all-teams for all")
-}
-
 // Connector opens gateway connections with fresh tickets from the API.
 func (a *App) Connector() gateway.Connector {
 	return func(ctx context.Context) (*gateway.Client, error) {
