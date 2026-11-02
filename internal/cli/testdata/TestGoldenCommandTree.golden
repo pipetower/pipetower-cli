@@ -28,6 +28,7 @@ terminal                 List, open and join shared terminal sessions
   join <session>         Join a running terminal session of your team
   list                   List the running terminal sessions of your teams
   open <server>          Open a shared terminal session on a server
+update                   Update pt to the latest version
 variable                 List the variables of your account, a team or a server
   list                   List the variables of your account, or of a server or team
 version                  Print the version of pt

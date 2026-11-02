@@ -12,15 +12,19 @@ pt terminal open prod
 ## Install
 
 ```sh
-# macOS / Linux
-brew install --cask pipetower/tap/pt
-# or
-curl -fsSL https://raw.githubusercontent.com/pipetower/pipetower-cli/main/install.sh | sh
-# or, with Go
-go install github.com/pipetower/pipetower-cli/cmd/pt@latest
+curl -fsSL https://pipetower.com/install-cli | bash
 ```
 
-`.deb`, `.rpm` and Windows builds are attached to every [release](https://github.com/pipetower/pipetower-cli/releases).
+pt runs on Linux and macOS (amd64 and arm64; on Windows use WSL). The script downloads the latest
+[release](https://github.com/pipetower/pipetower-cli/releases), verifies its checksum and installs
+`pt` to `/usr/local/bin`, or to `~/.local/bin` without write access there. `PT_INSTALL_DIR` chooses
+another directory, `PT_VERSION=1.2.0` a specific version.
+
+### Updates
+
+Once a day, when pt starts in a terminal, it looks for a new version and offers to install it. `pt update`
+updates at any time. The new version takes effect when pt is started again. Scripts and CI
+(no terminal, or `--no-input`) are never asked; `PT_NO_UPDATE_CHECK=1` turns the check off.
 
 ## Configure
 
@@ -63,6 +67,7 @@ command for each task (no aliases).
 | `pt pipe list \| view` · `pt template list \| view` · `pt team list \| view` | |
 | `pt status` | check configuration, token and the real-time gateway |
 | `pt api <method> <path> [-d json]` | raw authenticated API request |
+| `pt update` | update pt to the latest version |
 
 Running takes `-s <server>` (repeatable), `-v name=value` (missing variables are asked for),
 `--detach`, `--full` (complete output instead of the step tree) and `--quiet`. Every `view`
@@ -114,10 +119,23 @@ make golden    # update the golden files after an intended change of a view, the
 make release-snapshot   # goreleaser, all platforms into dist/
 ```
 
+Local builds are development builds (`dev-<git describe>`), which never look for updates.
+
 Packages: `cmd/pt` (entry), `internal/cli` (commands), `internal/api` (REST client),
 `internal/gateway` (WebSocket client), `internal/config` (.pipetower discovery),
 `internal/resolve` (names → resources), `internal/prompt` (pickers and questions),
 `internal/runview` (live runs), `internal/serverview` (dashboards), `internal/terminal` (sessions),
 `internal/present` (statuses, run rows), `internal/ui` (generic styles, tables, formatting),
 `internal/fault` (errors and exit codes), `internal/browser` (opens the web app),
-`internal/debounce` (coalesces bursts of changes into one refetch), `internal/version` (build information).
+`internal/debounce` (coalesces bursts of changes into one refetch), `internal/update` (finds and installs
+new releases), `internal/version` (build information).
+
+### Releasing
+
+Versions follow [semantic versioning](https://semver.org). `make release VERSION=1.2.0` tags `v1.2.0` on an
+up-to-date, clean `main` and pushes the tag; the release workflow then builds the archives with goreleaser
+and publishes them with `checksums.txt` and the changelog as a GitHub release. From then on the install
+script installs it, and every pt offers it as an update. A version with a suffix (`1.3.0-rc.1`) becomes a
+prerelease, which only `PT_VERSION=1.3.0-rc.1` installs.
+
+The install script itself is served by pipetower.com (`resources/scripts/install-cli.sh` in its repository).

@@ -46,6 +46,9 @@ type App struct {
 	teamID string
 	// openURL opens a page in the browser (replaced in tests).
 	openURL func(url string) error
+	// prompter replaces the terminal prompts (in tests).
+	prompter prompt.Prompter
+	updater  updater
 }
 
 // NewApp creates the app for the running process.
@@ -55,7 +58,7 @@ func NewApp() *App {
 
 // NewAppWith creates an app with the given environment and streams (e.g. in tests).
 func NewAppWith(env config.Env, newIO IOFactory) *App {
-	return &App{IO: newIO(false, false), env: env, newIO: newIO, openURL: browser.Open}
+	return &App{IO: newIO(false, false), env: env, newIO: newIO, openURL: browser.Open, updater: newUpdater()}
 }
 
 // setup applies the parsed global flags.
@@ -110,6 +113,9 @@ func (a *App) Client() (*api.Client, error) {
 func (a *App) Prompter() prompt.Prompter {
 	if !a.IO.CanPrompt {
 		return nil
+	}
+	if a.prompter != nil {
+		return a.prompter
 	}
 	return prompt.Terminal{Profile: a.IO.Profile}
 }

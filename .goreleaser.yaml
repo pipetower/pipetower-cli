@@ -13,7 +13,7 @@ builds:
     binary: pt
     env:
       - CGO_ENABLED=0
-    goos: [linux, darwin, windows]
+    goos: [linux, darwin]
     goarch: [amd64, arm64]
     flags:
       - -trimpath
@@ -23,12 +23,12 @@ builds:
       - -X github.com/pipetower/pipetower-cli/internal/version.Commit={{ .ShortCommit }}
       - -X github.com/pipetower/pipetower-cli/internal/version.Date={{ .Date }}
 
+# pt is installed with curl -fsSL https://pipetower.com/install-cli | bash, and updates itself
+# (pt update): both download these archives and verify them with checksums.txt, so their names
+# must not change.
 archives:
   - id: pt
     formats: [tar.gz]
-    format_overrides:
-      - goos: windows
-        formats: [zip]
     name_template: "pt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
@@ -36,29 +36,15 @@ archives:
 checksum:
   name_template: checksums.txt
 
+# local snapshots are no release, they never offer updates
+snapshot:
+  version_template: "dev-{{ .ShortCommit }}"
+
+release:
+  # v1.2.0-rc.1 becomes a prerelease, which neither the install script nor pt update installs
+  prerelease: auto
+
 changelog:
   sort: asc
   filters:
     exclude: ["^docs:", "^test:", "^chore:"]
-
-nfpms:
-  - id: pt
-    package_name: pipetower-cli
-    file_name_template: "pt_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    vendor: Pipetower
-    homepage: https://pipetower.com
-    maintainer: Pipetower <email@pipetower.com>
-    description: Run actions and workflows on your servers and follow them in real time.
-    license: Proprietary
-    formats: [deb, rpm]
-    bindir: /usr/bin
-
-homebrew_casks:
-  - name: pt
-    repository:
-      owner: pipetower
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    homepage: https://pipetower.com
-    description: Run actions and workflows on your servers and follow them in real time.
-    binaries: [pt]

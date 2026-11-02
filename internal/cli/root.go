@@ -22,7 +22,12 @@ func NewRootCommand(a *App) *cobra.Command {
 		Example: "  pt server list\n" +
 			"  pt workflow run \"Deploy App\" -s prod -v branch=main\n" +
 			"  pt terminal open prod",
-		PersistentPreRunE: func(*cobra.Command, []string) error { return a.setup() },
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if err := a.setup(); err != nil {
+				return err
+			}
+			return a.offerUpdate(cmd)
+		},
 	}
 
 	pf := root.PersistentFlags()
@@ -35,7 +40,7 @@ func NewRootCommand(a *App) *cobra.Command {
 	root.AddCommand(
 		newActionCommand(a), newWorkflowCommand(a), newRunCommand(a), newTerminalCommand(a),
 		newServerCommand(a), newVariableCommand(a), newPipeCommand(a), newTemplateCommand(a), newTeamCommand(a),
-		newStatusCommand(a), newAPICommand(a), newVersionCommand(a), newCompletionCommand(),
+		newStatusCommand(a), newAPICommand(a), newUpdateCommand(a), newVersionCommand(a), newCompletionCommand(),
 	)
 	// one way for each task: --help instead of a help command, our completion command instead of cobra's
 	root.SetHelpCommand(&cobra.Command{Hidden: true})

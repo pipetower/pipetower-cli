@@ -73,7 +73,7 @@ func newVersionCommand(a *App) *cobra.Command {
 		Args:  args(),
 		Run: func(*cobra.Command, []string) {
 			details := []string{version.Date, runtime.Version() + " " + runtime.GOOS + "/" + runtime.GOARCH}
-			if !strings.HasPrefix(version.Version, version.Commit) {
+			if !strings.Contains(version.Version, version.Commit) {
 				details = append([]string{version.Commit}, details...)
 			}
 			a.IO.Println(ui.Title.Render("pt") + " " + version.Version + ui.Muted.Render("  "+strings.Join(details, " · ")))
