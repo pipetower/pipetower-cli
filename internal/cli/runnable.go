@@ -147,6 +147,7 @@ func renderRunnable(r resolve.Runnable, width int) string {
 	if r.Action != nil && len(r.Action.Tags) > 0 {
 		lines = append(lines, " "+tags(r.Action.Tags))
 	}
+	lines = append(lines, " "+ui.Muted.Render("Runs on ")+resolve.AllowedServerNames(r))
 
 	lines = append(lines, "", ui.Bold.Render(" Variables"))
 	lines = append(lines, renderVariables(r.Variables(), width)...)

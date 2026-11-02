@@ -85,6 +85,12 @@ accepts `--web` to open the item in the web app, every list of named items `--se
 
 Servers can be given by name, id or `tag:<tag>` (all servers with that tag).
 
+An action or workflow runs only on servers of its team, and only on those its settings restrict it to:
+the picker and Tab offer only these, a server given with `-s` which it may not run on is rejected before
+anything starts, and a tag skips them (and says so). Restricted to a single server, it runs there
+without asking, like the run button of the web app. `pt action view` and `pt workflow view` show where
+it may run.
+
 In a terminal, everything you leave out is asked for: `pt server view`, `pt workflow run` or
 `pt terminal join` without arguments open a picker which you narrow down by typing (fuzzy, also
 by host or tag); running asks for the servers (Tab selects several) and the missing variables.

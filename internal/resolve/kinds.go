@@ -3,6 +3,7 @@ package resolve
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
@@ -52,6 +53,42 @@ func (r Runnable) Variables() []api.VariableDefinition {
 	return r.Workflow.Variables
 }
 
+// TeamID returns the team of the action or workflow, it may only run on servers of this team.
+func (r Runnable) TeamID() string {
+	if r.Action != nil {
+		return r.Action.TeamID
+	}
+	return r.Workflow.TeamID
+}
+
+// AllowedServers returns the servers the action or workflow is restricted to, nil if it may run on
+// all servers of its team.
+func (r Runnable) AllowedServers() *[]api.Reference {
+	if r.Action != nil {
+		return r.Action.AllowedServers
+	}
+	return r.Workflow.AllowedServers
+}
+
+// Allows tells whether the action or workflow may run on the server: one of its team, and one it
+// is restricted to, if it is restricted.
+func (r Runnable) Allows(server api.Server) bool {
+	if server.TeamID != "" && r.TeamID() != "" && server.TeamID != r.TeamID() {
+		return false
+	}
+	allowed := r.AllowedServers()
+	return allowed == nil || slices.ContainsFunc(*allowed, func(ref api.Reference) bool { return ref.ID == server.ID })
+}
+
+// SoleServer returns the only server the action or workflow may run on, if it is restricted to one.
+func (r Runnable) SoleServer() (api.Server, bool) {
+	allowed := r.AllowedServers()
+	if allowed == nil || len(*allowed) != 1 {
+		return api.Server{}, false
+	}
+	return api.Server{ID: (*allowed)[0].ID, Name: (*allowed)[0].Name, TeamID: r.TeamID()}, true
+}
+
 // Request creates the request which starts the runnable.
 func (r Runnable) Request(serverIDs []string, variables map[string]string) api.RunRequest {
 	req := api.RunRequest{ServerIDs: serverIDs, Variables: variables}
@@ -84,11 +121,53 @@ func (r *Resolver) Servers(ctx context.Context, args []string) ([]api.Server, er
 	return servers, nil
 }
 
-// PickServers lets the user choose one or several of all servers.
-func (r *Resolver) PickServers(ctx context.Context) ([]api.Server, error) {
-	entries, err := all(ctx, r, KindServer, describeServer)
+// ServersToRunOn resolves the servers given for a run of the action or workflow, like Servers. A
+// server it may not run on is an error; a tag expands to its servers it may run on, the others are
+// returned as skipped (an error if none is left).
+func (r *Resolver) ServersToRunOn(ctx context.Context, runnable Runnable, args []string) (servers []api.Server, skipped []string, err error) {
+	seen := map[string]bool{}
+	for _, arg := range args {
+		found, err := r.serversOf(ctx, arg)
+		if err != nil {
+			return nil, nil, err
+		}
+		_, isTag := strings.CutPrefix(arg, TagPrefix)
+		allowed := 0
+		for _, server := range found {
+			switch {
+			case !runnable.Allows(server) && !isTag:
+				return nil, nil, &NotAllowedError{Runnable: runnable, Arg: server.Name, OtherTeam: server.TeamID != runnable.TeamID()}
+			case !runnable.Allows(server):
+				skipped = append(skipped, server.Name)
+			case !seen[server.ID]:
+				seen[server.ID] = true
+				servers = append(servers, server)
+				allowed++
+			default:
+				allowed++
+			}
+		}
+		if isTag && allowed == 0 {
+			return nil, nil, &NotAllowedError{Runnable: runnable, Arg: arg}
+		}
+	}
+	return servers, skipped, nil
+}
+
+// PickServers lets the user choose one or several of the servers the action or workflow may run on.
+func (r *Resolver) PickServers(ctx context.Context, runnable Runnable) ([]api.Server, error) {
+	items, err := api.ListAll[api.Server](ctx, r.Client, api.Servers, api.ListOptions{Team: runnable.TeamID()}, maxCandidates)
 	if err != nil {
 		return nil, err
+	}
+	var entries []entry[api.Server]
+	for _, server := range items {
+		if runnable.Allows(server) {
+			entries = append(entries, describeServer(server))
+		}
+	}
+	if len(entries) == 0 {
+		return nil, &NotAllowedError{Runnable: runnable}
 	}
 	chosen, err := r.Prompter.PickMany("Run on which servers?", options(entries))
 	if err != nil {

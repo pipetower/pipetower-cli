@@ -136,9 +136,11 @@ type Action struct {
 	Name      string               `json:"name"`
 	Steps     []ActionStep         `json:"steps"`
 	Variables []VariableDefinition `json:"variables"`
-	Tags      []Tag                `json:"tags"`
-	CreatedAt *time.Time           `json:"created_at"`
-	UpdatedAt *time.Time           `json:"updated_at"`
+	// AllowedServers are the servers it is restricted to, nil if it may run on all servers of its team.
+	AllowedServers *[]Reference `json:"allowed_servers"`
+	Tags           []Tag        `json:"tags"`
+	CreatedAt      *time.Time   `json:"created_at"`
+	UpdatedAt      *time.Time   `json:"updated_at"`
 }
 
 // ActionStep is one step of an action.
@@ -156,9 +158,11 @@ type Workflow struct {
 	Name      string               `json:"name"`
 	Steps     []WorkflowStep       `json:"steps"`
 	Variables []VariableDefinition `json:"variables"`
-	Tags      []Tag                `json:"tags"`
-	CreatedAt *time.Time           `json:"created_at"`
-	UpdatedAt *time.Time           `json:"updated_at"`
+	// AllowedServers are the servers it is restricted to, nil if it may run on all servers of its team.
+	AllowedServers *[]Reference `json:"allowed_servers"`
+	Tags           []Tag        `json:"tags"`
+	CreatedAt      *time.Time   `json:"created_at"`
+	UpdatedAt      *time.Time   `json:"updated_at"`
 }
 
 // WorkflowStep runs one action within a workflow.

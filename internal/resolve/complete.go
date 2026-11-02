@@ -43,14 +43,47 @@ func (r *Resolver) Complete(ctx context.Context, kind Kind, prefix string) ([]Ca
 	return nil, fmt.Errorf("%s can't be completed", kind.Plural)
 }
 
-// CompleteTags lists the tags of the servers which start with the prefix, as tag:<name> when
-// prefixed, for -s tag:web.
-func (r *Resolver) CompleteTags(ctx context.Context, prefix string, prefixed bool) ([]Candidate, error) {
+// CompleteTags lists the tags of the servers which start with the prefix, for --tag.
+func (r *Resolver) CompleteTags(ctx context.Context, prefix string) ([]Candidate, error) {
 	servers, err := api.ListAll[api.Server](ctx, r.Client, api.Servers, r.options(api.Servers, api.ListOptions{}), maxCandidates)
 	if err != nil {
 		return nil, err
 	}
+	return tagCandidates(servers, prefix, false), nil
+}
 
+// CompleteServersToRunOn lists the servers to run on which start with the prefix, and the tags as
+// tag:<name>: of an action or workflow only the servers it may run on, and the tags with any of
+// them; without one (nil) all.
+func (r *Resolver) CompleteServersToRunOn(ctx context.Context, runnable *Runnable, prefix string) ([]Candidate, error) {
+	opts := r.options(api.Servers, api.ListOptions{})
+	if runnable != nil {
+		opts.Team = runnable.TeamID()
+	}
+	servers, err := api.ListAll[api.Server](ctx, r.Client, api.Servers, opts, maxCandidates)
+	if err != nil {
+		return nil, err
+	}
+	if runnable != nil {
+		servers = slices.DeleteFunc(servers, func(s api.Server) bool { return !runnable.Allows(s) })
+	}
+
+	var candidates []Candidate
+	if !strings.HasPrefix(prefix, TagPrefix) {
+		seen := map[string]bool{}
+		for _, s := range servers {
+			if !seen[s.Name] && hasPrefixFold(s.Name, prefix) {
+				seen[s.Name] = true
+				candidates = append(candidates, Candidate{s.Name, strings.TrimSpace(s.Host + "  " + tagList(s.Tags))})
+			}
+		}
+	}
+	return append(candidates, tagCandidates(servers, prefix, true)...), nil
+}
+
+// tagCandidates lists the tags of the servers which start with the prefix, as tag:<name> when
+// prefixed, described by how many of the servers have them.
+func tagCandidates(servers []api.Server, prefix string, prefixed bool) []Candidate {
 	counts := map[string]int{}
 	for _, server := range servers {
 		for _, tag := range server.Tags {
@@ -68,7 +101,7 @@ func (r *Resolver) CompleteTags(ctx context.Context, prefix string, prefixed boo
 		}
 	}
 	slices.SortFunc(candidates, func(a, b Candidate) int { return strings.Compare(a.Value, b.Value) })
-	return candidates, nil
+	return candidates
 }
 
 // complete lists the items of a kind whose name starts with the prefix, each name once.

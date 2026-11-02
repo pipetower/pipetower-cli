@@ -210,26 +210,21 @@ func completeTags(ctx context.Context, a *App, _ *cobra.Command, _ []string, toC
 	if err != nil {
 		return nil, 0, err
 	}
-	candidates, err := r.CompleteTags(ctx, toComplete, false)
+	candidates, err := r.CompleteTags(ctx, toComplete)
 	return candidates, 0, err
 }
 
 // completeRunServers completes the servers to run on and tag:<tag>, without those already given.
-func completeRunServers(ctx context.Context, a *App, cmd *cobra.Command, _ []string, toComplete string) ([]resolve.Candidate, cobra.ShellCompDirective, error) {
+func completeRunServers(ctx context.Context, a *App, cmd *cobra.Command, args []string, toComplete string) ([]resolve.Candidate, cobra.ShellCompDirective, error) {
 	r, err := completionResolver(ctx, a)
 	if err != nil {
 		return nil, 0, err
 	}
-	candidates, err := r.CompleteTags(ctx, toComplete, true)
+	// only the servers the action or workflow may run on, all while it is not given (yet)
+	runnable, _ := completionRunnable(ctx, r, cmd, args)
+	candidates, err := r.CompleteServersToRunOn(ctx, runnable, toComplete)
 	if err != nil {
 		return nil, 0, err
-	}
-	if !strings.HasPrefix(toComplete, resolve.TagPrefix) {
-		servers, err := r.Complete(ctx, resolve.KindServer, toComplete)
-		if err != nil {
-			return nil, 0, err
-		}
-		candidates = append(servers, candidates...)
 	}
 
 	given, _ := cmd.Flags().GetStringArray("server")
@@ -318,11 +313,7 @@ func completeVariables(ctx context.Context, a *App, cmd *cobra.Command, args []s
 	if err != nil {
 		return nil, 0, err
 	}
-	kind := actionKind
-	if cmd.Parent().Name() == workflowKind.kind.Singular {
-		kind = workflowKind
-	}
-	runnable, err := kind.resolve(r, ctx, args[0])
+	runnable, err := completionRunnable(ctx, r, cmd, args)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -346,6 +337,22 @@ func completeVariables(ctx context.Context, a *App, cmd *cobra.Command, args []s
 		return candidates, 0, nil
 	}
 	return candidates, cobra.ShellCompDirectiveNoSpace, nil // the value follows the =
+}
+
+// completionRunnable resolves the action or workflow of pt action|workflow run <name>, nil without one.
+func completionRunnable(ctx context.Context, r *resolve.Resolver, cmd *cobra.Command, args []string) (*resolve.Runnable, error) {
+	if len(args) == 0 {
+		return nil, nil
+	}
+	kind := actionKind
+	if cmd.Parent().Name() == workflowKind.kind.Singular {
+		kind = workflowKind
+	}
+	runnable, err := kind.resolve(r, ctx, args[0])
+	if err != nil {
+		return nil, err
+	}
+	return &runnable, nil
 }
 
 // isGiven tells whether a variable was already given as name=value.

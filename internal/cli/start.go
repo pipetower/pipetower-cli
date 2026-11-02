@@ -51,7 +51,7 @@ func addFollowFlags(cmd *cobra.Command, flags *followFlags) {
 
 // startRun asks for what is missing, starts the run and follows it.
 func startRun(ctx context.Context, a *App, runnable resolve.Runnable, flags runFlags) error {
-	servers, err := pickServers(ctx, a, flags.servers)
+	servers, err := serversToRunOn(ctx, a, runnable, flags)
 	if err != nil {
 		return err
 	}
@@ -132,19 +132,39 @@ func followRun(ctx context.Context, a *App, runID string, flags followFlags) err
 	return nil
 }
 
-// pickServers resolves the --server flags or lets the user choose servers.
-func pickServers(ctx context.Context, a *App, args []string) ([]api.Server, error) {
+// serversToRunOn returns the servers to run on, only those the action or workflow may run on: the
+// --server flags (tags without the servers it may not run on), its only server if it is restricted
+// to one, or those the user picks.
+func serversToRunOn(ctx context.Context, a *App, runnable resolve.Runnable, flags runFlags) ([]api.Server, error) {
 	resolver, err := a.Resolver(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(args) > 0 {
-		return resolver.Servers(ctx, args)
+	notice := func(text string) {
+		if !flags.follow.quiet {
+			a.IO.Errorln(" " + text)
+		}
+	}
+
+	if len(flags.servers) > 0 {
+		servers, skipped, err := resolver.ServersToRunOn(ctx, runnable, flags.servers)
+		if err == nil && len(skipped) > 0 {
+			notice(ui.Muted.Render("Skipping " + strings.Join(skipped, ", ") + ": " + runnable.Name() + " may not run there"))
+		}
+		return servers, err
+	}
+	if server, ok := runnable.SoleServer(); ok {
+		// like the run button of the web app, which runs it on its only server without asking
+		notice(ui.Muted.Render("On ") + ui.Bold.Render(server.Name) + ui.Muted.Render(", the only server "+runnable.Name()+" may run on"))
+		return []api.Server{server}, nil
+	}
+	if allowed := runnable.AllowedServers(); allowed != nil && len(*allowed) == 0 {
+		return nil, &resolve.NotAllowedError{Runnable: runnable}
 	}
 	if resolver.Prompter == nil {
 		return nil, usageError("No server given", "Choose servers with --server <name|id|tag:tag>, it can be repeated.")
 	}
-	return resolver.PickServers(ctx)
+	return resolver.PickServers(ctx, runnable)
 }
 
 // collectVariables combines --var flags with answers for the missing variables.

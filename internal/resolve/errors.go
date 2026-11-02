@@ -59,6 +59,51 @@ func (e *AmbiguousError) Problem() fault.Problem {
 	}
 }
 
+// NotAllowedError tells that an action or workflow may not run on a server, or a tag's servers. Without
+// Arg, it may not run on any server at all (its servers were deleted after it was restricted to them).
+type NotAllowedError struct {
+	Runnable  Runnable
+	Arg       string
+	OtherTeam bool
+}
+
+// Error implements error.
+func (e *NotAllowedError) Error() string {
+	if e.Arg == "" {
+		return e.Runnable.Name() + " may not run on any server"
+	}
+	return e.Runnable.Name() + " may not run on " + e.Arg
+}
+
+// Problem implements fault.Explainer, it names where the action or workflow may run.
+func (e *NotAllowedError) Problem() fault.Problem {
+	p := fault.Problem{Title: ui.Capitalize(e.Error()), Code: fault.ExitUsage}
+	kind := strings.ToLower(e.Runnable.Type())
+	switch allowed := e.Runnable.AllowedServers(); {
+	case e.OtherTeam:
+		p.Detail = e.Arg + " belongs to another team than the " + kind + "."
+	case allowed != nil && len(*allowed) == 0:
+		p.Detail = "The servers it was restricted to don't exist anymore."
+		p.Hints = []fault.Hint{{Label: "Choose its servers in the settings of the " + kind + " in Pipetower"}}
+		return p
+	}
+	p.Hints = []fault.Hint{{Label: "It may run on", Value: AllowedServerNames(e.Runnable)}}
+	return p
+}
+
+// AllowedServerNames names the servers the action or workflow may run on.
+func AllowedServerNames(runnable Runnable) string {
+	allowed := runnable.AllowedServers()
+	if allowed == nil {
+		return "any server of its team"
+	}
+	names := make([]string, len(*allowed))
+	for i, ref := range *allowed {
+		names[i] = ref.Name
+	}
+	return strings.Join(names, ", ")
+}
+
 // listCommand is the command which lists the kind.
 func listCommand(kind Kind) string {
 	return "pt " + kind.Command + " list"
