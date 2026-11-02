@@ -22,7 +22,7 @@ const (
 )
 
 // pingInterval and pingTimeout detect a dead connection, e.g. after a laptop slept
-// (variables for the tests).
+// (variables for the tests, a client keeps the values it was connected with).
 var (
 	pingInterval = 25 * time.Second
 	pingTimeout  = 10 * time.Second
@@ -52,6 +52,8 @@ type Client struct {
 	cancel   context.CancelFunc
 	done     chan struct{}
 	closing  atomic.Bool
+	// ping is the interval of the keep-alive pings, pingTimeout how long one may stay unanswered
+	ping, pingTimeout time.Duration
 
 	mu     sync.Mutex
 	conn   *websocket.Conn
@@ -63,7 +65,8 @@ type Client struct {
 // and keeps the connection alive in the background afterwards.
 func Connect(ctx context.Context, tickets TicketFunc) (*Client, error) {
 	ctx, cancel := context.WithCancel(ctx)
-	c := &Client{tickets: tickets, inbox: newMailbox(), messages: make(chan Message), ctx: ctx, cancel: cancel, done: make(chan struct{}), topics: map[string]bool{}}
+	c := &Client{tickets: tickets, inbox: newMailbox(), messages: make(chan Message), ctx: ctx, cancel: cancel, done: make(chan struct{}), topics: map[string]bool{},
+		ping: pingInterval, pingTimeout: pingTimeout}
 
 	conn, ready, err := c.dial()
 	if err != nil {
@@ -170,14 +173,14 @@ func (c *Client) run(conn *websocket.Conn) {
 func (c *Client) readAlive(conn *websocket.Conn) {
 	ctx, stop := context.WithCancel(c.ctx)
 	defer stop()
-	go keepAlive(ctx, conn)
+	go keepAlive(ctx, conn, c.ping, c.pingTimeout)
 
 	c.read(conn)
 }
 
 // keepAlive pings the connection in intervals and closes it when a ping is not answered.
-func keepAlive(ctx context.Context, conn *websocket.Conn) {
-	ticker := time.NewTicker(pingInterval)
+func keepAlive(ctx context.Context, conn *websocket.Conn, interval, timeout time.Duration) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -185,7 +188,7 @@ func keepAlive(ctx context.Context, conn *websocket.Conn) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+			pingCtx, cancel := context.WithTimeout(ctx, timeout)
 			err := conn.Ping(pingCtx)
 			cancel()
 			if err != nil && ctx.Err() == nil {
