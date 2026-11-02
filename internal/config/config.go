@@ -4,6 +4,10 @@
 // token: in the working directory, one of its parents or ~/.pipetower. The URL always comes
 // from the same place as the token, so that a file of a cloned repository can never redirect
 // the token to another server. Only $PIPETOWER_URL, which the user sets, may override it.
+//
+// The team which limits all resources is taken from $PIPETOWER_TEAM, or else from the first file
+// with a team, independent of the token: a project's .pipetower may contain only its team and use
+// the token of ~/.pipetower. A team can't send the token anywhere, it only narrows what is shown.
 package config
 
 import (
@@ -22,6 +26,7 @@ const (
 	FileName = ".pipetower"
 	EnvURL   = "PIPETOWER_URL"
 	EnvToken = "PIPETOWER_TOKEN"
+	EnvTeam  = "PIPETOWER_TEAM"
 )
 
 // Source tells where a value came from: an environment variable or a file path.
@@ -44,8 +49,11 @@ type Config struct {
 	Token       string
 	URLSource   Source
 	TokenSource Source
-	Searched    []string
-	Warnings    []string
+	// Team (name or id) limits the resources, empty for all teams.
+	Team       string
+	TeamSource Source
+	Searched   []string
+	Warnings   []string
 }
 
 // Env abstracts the process environment, so discovery is testable.
@@ -76,6 +84,11 @@ func Load(env Env) (*Config, error) {
 	if url := env.Getenv(EnvURL); url != "" {
 		cfg.URL, cfg.URLSource = normalizeURL(url), Source{Env: EnvURL}
 	}
+	if team := strings.TrimSpace(env.Getenv(EnvTeam)); team != "" {
+		cfg.Team, cfg.TeamSource = team, Source{Env: EnvTeam}
+	} else {
+		cfg.loadTeam()
+	}
 
 	return cfg, cfg.validate(env.Home)
 }
@@ -102,6 +115,22 @@ func (c *Config) loadFiles(env Env) {
 		}
 		c.Warnings = append(c.Warnings, fileWarnings(path, env)...)
 		c.Warnings = append(c.Warnings, shadowWarning(path, c.URL, env.Home)...)
+		return
+	}
+}
+
+// loadTeam takes the team from the first file with a team, which may be another than the one of
+// the token.
+func (c *Config) loadTeam() {
+	for _, path := range c.Searched {
+		values, err := readFile(path)
+		if err != nil || values[EnvTeam] == "" {
+			continue
+		}
+		if !ownedByCurrentUser(path) {
+			continue // warned about when it has a token, a team alone can do no harm
+		}
+		c.Team, c.TeamSource = values[EnvTeam], Source{Path: path}
 		return
 	}
 }

@@ -56,6 +56,27 @@ repository can never send your token to another server. Only `PIPETOWER_URL` fro
 overrides it. A `.pipetower` in a project directory with its own token can point to another
 instance, e.g. your local development instance.
 
+### One team per project
+
+With several teams, `PIPETOWER_TEAM` limits every command to one of them: lists, pickers, Tab, runs
+and terminal sessions, exactly like `--team`. pt takes it from the environment, or from the nearest
+`.pipetower` which has it, independently of the token. So a project's `.pipetower` may contain only
+its team, while the token stays in `~/.pipetower`:
+
+```sh
+# ~/.pipetower
+PIPETOWER_URL=https://app.pipetower.com
+PIPETOWER_TOKEN=<token>
+
+# ~/code/project-1/.pipetower
+PIPETOWER_TEAM=Ops
+```
+
+In `~/code/project-1` and below, pt shows only the resources of Ops; elsewhere those of all your teams.
+`--team <name>` overrides the team for one command, `--all-teams` lifts it. Lists name the team and its
+file below them, and `pt status` shows it. Keep the project's `.pipetower` in `.gitignore` like any
+other: should a token ever be added to it, it must not be committed.
+
 pt only uses files which belong to you, accepts `http://` (and a `ws://` real-time gateway) only for
 local instances (`localhost`, `*.localhost`, loopback addresses), and warns when a file is readable by
 others, lies unignored in a git repository, or is ignored because it has a URL but no token.
@@ -97,7 +118,8 @@ by host or tag); running asks for the servers (Tab selects several) and the miss
 Ambiguous names open the same picker. What you give as argument or flag is never asked for, and
 in scripts, CI or with `--no-input` nothing is asked at all: missing values fail with a usage error.
 
-Global flags: `-o table|json|yaml`, `--no-input`, `--no-color` (or `NO_COLOR`), `--team`, `-h` (help).
+Global flags: `-o table|json|yaml`, `--no-input`, `--no-color` (or `NO_COLOR`), `--team` (or
+`PIPETOWER_TEAM`), `--all-teams`, `-h` (help).
 
 ### Live runs
 

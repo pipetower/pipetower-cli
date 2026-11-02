@@ -5,6 +5,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
@@ -26,10 +27,11 @@ const (
 
 // flags are the global flags.
 type flags struct {
-	output  string
-	noInput bool
-	noColor bool
-	team    string
+	output   string
+	noInput  bool
+	noColor  bool
+	team     string
+	allTeams bool
 }
 
 // IOFactory creates the streams once the global flags are known.
@@ -43,7 +45,9 @@ type App struct {
 	newIO  IOFactory
 	cfg    *config.Config
 	client *api.Client
-	teamID string
+	// team is the team which limits the resources, resolved once by TeamID.
+	team     api.Team
+	resolved bool
 	// openURL opens a page in the browser (replaced in tests).
 	openURL func(url string) error
 	// prompter replaces the terminal prompts (in tests).
@@ -65,6 +69,9 @@ func NewAppWith(env config.Env, newIO IOFactory) *App {
 func (a *App) setup() error {
 	a.IO = a.newIO(a.flags.noColor, a.flags.noInput)
 
+	if a.flags.allTeams && a.flags.team != "" {
+		return usageError("Use either --team or --all-teams", "--all-teams shows the resources of all your teams, --team those of one.")
+	}
 	switch a.flags.output {
 	case FormatTable, FormatJSON, FormatYAML:
 		return nil
@@ -120,7 +127,7 @@ func (a *App) Prompter() prompt.Prompter {
 	return prompt.Terminal{Profile: a.IO.Profile}
 }
 
-// Resolver returns a resolver which asks the user when allowed, limited to the team of --team.
+// Resolver returns a resolver which asks the user when allowed, limited to the team (see TeamID).
 func (a *App) Resolver(ctx context.Context) (*resolve.Resolver, error) {
 	client, err := a.Client()
 	if err != nil {
@@ -133,18 +140,63 @@ func (a *App) Resolver(ctx context.Context) (*resolve.Resolver, error) {
 	return &resolve.Resolver{Client: client, Prompter: a.Prompter(), TeamID: teamID}, nil
 }
 
-// TeamID resolves the team given with --team once, it is empty without the flag.
+// TeamID resolves the team which limits the resources once: --team, or else the team of the
+// configuration ($PIPETOWER_TEAM or a .pipetower), none with --all-teams. It is empty without a team.
 func (a *App) TeamID(ctx context.Context) (string, error) {
-	if a.flags.team == "" || a.teamID != "" {
-		return a.teamID, nil
+	if a.resolved {
+		return a.team.ID, nil
+	}
+	name, source, err := a.teamSetting()
+	if err != nil || name == "" {
+		return "", err
 	}
 	client, err := a.Client()
 	if err != nil {
 		return "", err
 	}
-	team, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(ctx, a.flags.team)
-	a.teamID = team.ID
-	return a.teamID, err
+	team, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(ctx, name)
+	if err != nil {
+		return "", teamProblem(err, source)
+	}
+	a.team, a.resolved = team, true
+	return team.ID, nil
+}
+
+// teamSetting returns the team which limits the resources, and where it was set: --team (no
+// source), or the configuration. It is empty for all teams.
+func (a *App) teamSetting() (string, config.Source, error) {
+	switch {
+	case a.flags.allTeams:
+		return "", config.Source{}, nil
+	case a.flags.team != "":
+		return a.flags.team, config.Source{}, nil
+	}
+	cfg, err := a.Config()
+	if err != nil {
+		return "", config.Source{}, err
+	}
+	return cfg.Team, cfg.TeamSource, nil
+}
+
+// teamProblem tells where an unknown team of the configuration was set.
+func teamProblem(err error, source config.Source) error {
+	var explainer fault.Explainer
+	if source == (config.Source{}) || !errors.As(err, &explainer) {
+		return err
+	}
+	problem := explainer.Problem()
+	problem.Hints = append([]fault.Hint{{Label: "Set in", Value: source.String()}, {Label: "Or use", Value: "--all-teams"}}, problem.Hints...)
+	return &fault.Error{P: problem, Cause: err}
+}
+
+// teamNote names the team which limits a list when the configuration set it, so that a limited list
+// is never taken for all; empty without such a team.
+func (a *App) teamNote() string {
+	_, source, err := a.teamSetting()
+	if err != nil || !a.resolved || source == (config.Source{}) {
+		return ""
+	}
+	return ui.Faint.Render(" Team " + a.team.Name + " · set in " + source.String() + " · --all-teams for all")
 }
 
 // Connector opens gateway connections with fresh tickets from the API.

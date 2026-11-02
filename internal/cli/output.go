@@ -69,6 +69,12 @@ func showList[T any](ctx context.Context, a *App, l listing[T]) error {
 	if page.Meta.HasMore {
 		a.IO.Errorln(ui.Faint.Render(fmt.Sprintf("\n Showing %d–%d of %d · use --page %d for more", page.Meta.From, page.Meta.To, page.Meta.Total, l.opts.Page+1)))
 	}
+	if note := a.teamNote(); l.byTeam && note != "" {
+		if !page.Meta.HasMore {
+			a.IO.Errorln()
+		}
+		a.IO.Errorln(note)
+	}
 	return nil
 }
 

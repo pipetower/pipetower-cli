@@ -208,3 +208,51 @@ func TestGatewayURLMustBeEncryptedUnlessLocal(t *testing.T) {
 		}
 	}
 }
+
+func TestProjectFileWithOnlyATeamUsesTheTokenOfHome(t *testing.T) {
+	root := t.TempDir()
+	home, project := filepath.Join(root, "home"), filepath.Join(root, "code", "project-1")
+	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=home-token\n")
+	writeFile(t, filepath.Join(project, FileName), "PIPETOWER_TEAM=Ops\n")
+
+	cfg, err := Load(testEnv(t, filepath.Join(project, "src"), home, nil))
+
+	if err != nil || cfg.Token != "home-token" || cfg.URL != "https://app" {
+		t.Fatalf("err = %v, token = %q, url = %q", err, cfg.Token, cfg.URL)
+	}
+	if cfg.Team != "Ops" || cfg.TeamSource.Path != filepath.Join(project, FileName) {
+		t.Errorf("team = %q from %v", cfg.Team, cfg.TeamSource)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("a file with a team only is no reason to warn: %v", cfg.Warnings)
+	}
+}
+
+func TestNearestTeamWinsAndTheEnvironmentOverridesIt(t *testing.T) {
+	root := t.TempDir()
+	home, project := filepath.Join(root, "home"), filepath.Join(root, "project")
+	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=t\nPIPETOWER_TEAM=Default\n")
+	writeFile(t, filepath.Join(project, FileName), "PIPETOWER_TEAM=Ops\n")
+
+	inProject, _ := Load(testEnv(t, project, home, nil))
+	elsewhere, _ := Load(testEnv(t, root, home, nil))
+	fromEnv, _ := Load(testEnv(t, project, home, map[string]string{EnvTeam: "Shop"}))
+
+	if inProject.Team != "Ops" || elsewhere.Team != "Default" {
+		t.Errorf("in the project %q, elsewhere %q", inProject.Team, elsewhere.Team)
+	}
+	if fromEnv.Team != "Shop" || fromEnv.TeamSource.Env != EnvTeam {
+		t.Errorf("team = %q from %v", fromEnv.Team, fromEnv.TeamSource)
+	}
+}
+
+func TestWithoutTeamNothingIsLimited(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=t\n")
+
+	cfg, err := Load(testEnv(t, root, "", nil))
+
+	if err != nil || cfg.Team != "" || cfg.TeamSource != (Source{}) {
+		t.Errorf("err = %v, team = %q from %v", err, cfg.Team, cfg.TeamSource)
+	}
+}

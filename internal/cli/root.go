@@ -34,7 +34,8 @@ func NewRootCommand(a *App) *cobra.Command {
 	pf.StringVarP(&a.flags.output, "output", "o", FormatTable, "output format: table, json or yaml")
 	pf.BoolVar(&a.flags.noInput, "no-input", false, "never prompt, fail instead")
 	pf.BoolVar(&a.flags.noColor, "no-color", false, "disable colors (also via NO_COLOR)")
-	pf.StringVar(&a.flags.team, "team", "", "only resources of this team (name or id)")
+	pf.StringVar(&a.flags.team, "team", "", "only resources of this team (name or id), also set by PIPETOWER_TEAM")
+	pf.BoolVar(&a.flags.allTeams, "all-teams", false, "resources of all your teams, also where PIPETOWER_TEAM sets one")
 	pf.BoolP("help", "h", false, "show the help")
 
 	root.AddCommand(

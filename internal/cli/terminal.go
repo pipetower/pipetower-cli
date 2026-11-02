@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -76,14 +77,30 @@ func newTerminalListCommand(a *App) *cobra.Command {
 			}
 			defer client.Close()
 
-			sessions := client.Ready().Sessions
+			sessions, err := teamSessions(cmd.Context(), a, client.Ready().Sessions)
+			if err != nil {
+				return err
+			}
 			if a.Structured() {
 				return a.PrintValue(sessions)
 			}
 			printSessions(a, sessions)
+			if note := a.teamNote(); note != "" {
+				a.IO.Errorln("\n" + note)
+			}
 			return nil
 		},
 	}
+}
+
+// teamSessions keeps the sessions of the team which limits the resources (see App.TeamID), all
+// without one. The gateway announces the sessions of all the user's teams.
+func teamSessions(ctx context.Context, a *App, sessions []gateway.LobbySession) ([]gateway.LobbySession, error) {
+	teamID, err := a.TeamID(ctx)
+	if err != nil || teamID == "" {
+		return sessions, err
+	}
+	return slices.DeleteFunc(sessions, func(s gateway.LobbySession) bool { return s.Team != teamID }), nil
 }
 
 // printSessions prints the lobby as a table.
@@ -145,8 +162,11 @@ func pickSession(ctx context.Context, a *App) (gateway.LobbySession, error) {
 	if err != nil {
 		return gateway.LobbySession{}, err
 	}
-	sessions := client.Ready().Sessions
+	sessions, err := teamSessions(ctx, a, client.Ready().Sessions)
 	client.Close()
+	if err != nil {
+		return gateway.LobbySession{}, err
+	}
 	if len(sessions) == 0 {
 		return gateway.LobbySession{}, fault.New(fault.Problem{
 			Title: "No live terminal sessions",

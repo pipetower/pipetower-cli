@@ -19,6 +19,8 @@ type statusReport struct {
 	User        string   `json:"user"`
 	Email       string   `json:"email"`
 	Teams       []string `json:"teams"`
+	Team        string   `json:"team,omitempty"`
+	TeamSource  string   `json:"team_source,omitempty"`
 	Gateway     string   `json:"gateway"`
 	GatewayMS   int64    `json:"gateway_ms"`
 	GatewayErr  string   `json:"gateway_error,omitempty"`
@@ -71,6 +73,12 @@ func checkStatus(ctx context.Context, a *App) (statusReport, error) {
 		Instance: cfg.URL, URLSource: cfg.URLSource.String(), TokenSource: cfg.TokenSource.String(),
 		User: account.Name, Email: account.Email, Teams: teamNames(teams),
 	}
+	if teamID, err := a.TeamID(ctx); err != nil {
+		return statusReport{}, err
+	} else if teamID != "" {
+		_, source, _ := a.teamSetting()
+		report.Team, report.TeamSource = a.team.Name, ui.Or(source.String(), "--team")
+	}
 	checkGateway(ctx, a, &report)
 	return report, nil
 }
@@ -102,6 +110,7 @@ func renderStatus(r statusReport) string {
 		"",
 		line("User", ui.Bold.Render(r.User)+ui.Muted.Render("  "+r.Email)),
 		line("Teams", strings.Join(r.Teams, ", ")),
+		teamLine(r),
 		line("API", ui.Success.Render("● ")+"authenticated"),
 		line("Gateway", gatewayText),
 		"",
@@ -109,6 +118,14 @@ func renderStatus(r statusReport) string {
 		line("Token from", ui.Muted.Render(r.TokenSource)),
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+// teamLine tells which team limits the resources, and where it was set.
+func teamLine(r statusReport) string {
+	if r.Team == "" {
+		return line("Limited to", ui.Muted.Render("no team, resources of all your teams"))
+	}
+	return line("Limited to", ui.Bold.Render(r.Team)+ui.Muted.Render("  set in "+r.TeamSource+" · --all-teams for all"))
 }
 
 // line renders a labeled status line.
