@@ -20,6 +20,13 @@ pt runs on Linux and macOS (amd64 and arm64; on Windows use WSL). The script dow
 `pt` to `/usr/local/bin`, or to `~/.local/bin` without write access there. `PT_INSTALL_DIR` chooses
 another directory, `PT_VERSION=1.2.0` a specific version.
 
+It also sets up Tab completion for bash, zsh and fish, where these shells load completions on their
+own (`PT_NO_COMPLETION=1` skips it); when your shell needs one more line in its configuration, the
+script tells you which. Tab completes commands, flags and the names of your servers, tags, actions,
+workflows, pipes, templates, teams, runs and terminal sessions, as well as the variables of an action
+or workflow (`-v branch=<Tab>`). It asks pt on every Tab, so it stays complete after updates.
+`pt completion <shell>` prints the script for setting it up by hand.
+
 ### Updates
 
 Once a day, when pt starts in a terminal, it looks for a new version and offers to install it. `pt update`

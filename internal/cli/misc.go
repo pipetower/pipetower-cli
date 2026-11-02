@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"runtime"
@@ -81,6 +83,28 @@ func newVersionCommand(a *App) *cobra.Command {
 	}
 }
 
+// fishRequest is where cobra's fish script asks pt for completions. It joins the arguments into one
+// string for eval, which splits a name with spaces ("Deploy App") into two, so each argument is
+// escaped first.
+var fishRequest = strings.NewReplacer(
+	`    set -l requestComp "`, "    set -l escapedArgs (string escape -- $args[2..-1])\n    set -l requestComp \"",
+	`__complete $args[2..-1] $lastArg"`, `__complete $escapedArgs $lastArg"`,
+)
+
+// genFishCompletion writes cobra's fish script with the arguments escaped.
+func genFishCompletion(root *cobra.Command, out io.Writer) error {
+	var script strings.Builder
+	if err := root.GenFishCompletion(&script, true); err != nil {
+		return err
+	}
+	patched := fishRequest.Replace(script.String())
+	if !strings.Contains(patched, "__complete $escapedArgs $lastArg") || strings.Count(patched, "escapedArgs") != 2 {
+		return errors.New("cobra's fish completion script has changed, adapt fishRequest")
+	}
+	_, err := io.WriteString(out, patched)
+	return err
+}
+
 // parseQuery parses a query string, invalid parts are dropped.
 func parseQuery(query string) url.Values {
 	values, _ := url.ParseQuery(query)
@@ -90,8 +114,10 @@ func parseQuery(query string) url.Values {
 // newCompletionCommand prints the shell completion script.
 func newCompletionCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:     "completion <shell>",
-		Short:   "Print the shell completion script (bash, zsh, fish, powershell)",
+		Use:   "completion <shell>",
+		Short: "Print the shell completion script (bash, zsh, fish, powershell)",
+		Long: "Print the shell completion script (bash, zsh, fish, powershell). The install script sets it up\n" +
+			"for bash, zsh and fish, this is for setting it up by hand.",
 		Example: "  source <(pt completion bash)\n  pt completion zsh > \"${fpath[1]}/_pt\"",
 		Args:    args("shell"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
@@ -102,7 +128,7 @@ func newCompletionCommand() *cobra.Command {
 			case "zsh":
 				return root.GenZshCompletion(out)
 			case "fish":
-				return root.GenFishCompletion(out, true)
+				return genFishCompletion(root, out)
 			case "powershell":
 				return root.GenPowerShellCompletionWithDesc(out)
 			}

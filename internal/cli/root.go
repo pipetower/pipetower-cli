@@ -48,6 +48,7 @@ func NewRootCommand(a *App) *cobra.Command {
 	root.SilenceErrors, root.SilenceUsage = true, true
 	root.CompletionOptions.DisableDefaultCmd = true
 	forEachCommand(root, rejectUnknownSubcommand)
+	addCompletions(a, root)
 	showLogo(a, root)
 	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
 		return usageProblem(cmd, ui.Capitalize(err.Error()))
