@@ -24,7 +24,9 @@ It also sets up Tab completion for bash, zsh and fish, where these shells load c
 own (`PT_NO_COMPLETION=1` skips it); when your shell needs one more line in its configuration, the
 script tells you which. Tab completes commands, flags and the names of your servers, tags, actions,
 workflows, pipes, templates, teams, runs and terminal sessions, as well as the variables of an action
-or workflow (`-v branch=<Tab>`). It asks pt on every Tab, so it stays complete after updates.
+or workflow (`-v branch=<Tab>`), also for names with spaces, typed escaped (`Deploy\ U<Tab>`) or in
+quotes (`"Deploy U<Tab>`). The shells load the completion from the installed pt and ask it on every
+Tab, so it stays complete after updates.
 `pt completion <shell>` prints the script for setting it up by hand.
 
 ### Updates

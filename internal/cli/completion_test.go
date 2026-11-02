@@ -145,11 +145,21 @@ func TestEveryArgumentAndFlagValueIsCompleted(t *testing.T) {
 	})
 }
 
-func TestFishScriptKeepsNamesWithSpacesTogether(t *testing.T) {
-	out := execute(t, fakeAPI{}, "test-token", "completion", "fish")
-
-	if out.code != 0 || !strings.Contains(out.stdout, "set -l escapedArgs (string escape -- $args[2..-1])") ||
-		!strings.Contains(out.stdout, "__complete $escapedArgs $lastArg") {
-		t.Errorf("exit %d, stderr:\n%s", out.code, out.stderr)
+func TestCompletionScriptsArePatchedForNamesWithSpaces(t *testing.T) {
+	patches := map[string][]string{
+		// several matches are inserted escaped, quoted names complete within the quote
+		"bash": {"__pt_complete_names\n", "local rawCompletions=", "requestComp+=${cur:0:1}"},
+		// a quote the user opened is closed for the request
+		"zsh": {"requestComp+=${compstate[quote]}"},
+		// arguments are escaped for the eval, the word being completed is unescaped
+		"fish": {"set -l escapedArgs (string escape -- $args[2..-1])", "__complete $escapedArgs $lastArg", "(commandline -ct | string unescape)"},
+	}
+	for shell, want := range patches {
+		out := execute(t, fakeAPI{}, "test-token", "completion", shell)
+		for _, patch := range want {
+			if out.code != 0 || !strings.Contains(out.stdout, patch) {
+				t.Errorf("%s: exit %d, script lacks %q, stderr:\n%s", shell, out.code, patch, out.stderr)
+			}
+		}
 	}
 }
