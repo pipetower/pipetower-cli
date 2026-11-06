@@ -25,6 +25,9 @@ const (
 	ModeFull
 )
 
+// toggleKey switches between the step tree and the full output while following a run.
+const toggleKey = "f"
+
 // Outcome is how following ended.
 type Outcome int
 
@@ -113,15 +116,33 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *model) afterChange(finished bool) tea.Cmd {
 	var cmds []tea.Cmd
 	if m.mode == ModeFull {
-		for _, line := range m.log.Lines() {
-			cmds = append(cmds, tea.Println(line))
-		}
+		cmds = append(cmds, m.printLog())
 	}
 	if finished {
 		m.outcome = OutcomeFinished
 		cmds = append(cmds, tea.Quit)
 	}
 	return tea.Sequence(cmds...)
+}
+
+// printLog prints the log lines which are new since they were printed last, above the live view.
+func (m *model) printLog() tea.Cmd {
+	lines := m.log.Lines()
+	if len(lines) == 0 {
+		return nil
+	}
+	return tea.Println(strings.Join(lines, "\n"))
+}
+
+// toggleMode switches between the step tree and the full output. The full output first prints
+// everything since it was shown last, so that it is complete as if it had been shown all along.
+func (m *model) toggleMode() tea.Cmd {
+	if m.mode == ModeFull {
+		m.mode = ModeTree
+		return nil
+	}
+	m.mode = ModeFull
+	return m.printLog()
 }
 
 // key handles Ctrl+C (ask to terminate or detach), and the answers of that question.
@@ -135,6 +156,8 @@ func (m *model) key(key string) tea.Cmd {
 	case "q":
 		m.outcome = OutcomeDetached
 		return tea.Quit
+	case toggleKey:
+		return m.toggleMode()
 	}
 	return nil
 }
@@ -217,6 +240,14 @@ func (m *model) statusLine() string {
 	return text
 }
 
+// toggleTarget names the view the toggle key switches to.
+func (m *model) toggleTarget() string {
+	if m.mode == ModeFull {
+		return "step tree"
+	}
+	return "full output"
+}
+
 // footer shows the connection state, the terminate question or the key help.
 func (m *model) footer() string {
 	switch {
@@ -230,7 +261,7 @@ func (m *model) footer() string {
 	if m.notice != "" {
 		parts = append(parts, m.notice)
 	}
-	parts = append(parts, ui.Faint.Render("ctrl+c terminate/detach · q detach"))
+	parts = append(parts, ui.Faint.Render(toggleKey+" "+m.toggleTarget()+" · ctrl+c terminate/detach · q detach"))
 	return " " + strings.Join(parts, ui.Faint.Render("  ·  "))
 }
 

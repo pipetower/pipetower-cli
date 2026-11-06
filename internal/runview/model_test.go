@@ -2,6 +2,7 @@ package runview
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -141,5 +142,45 @@ func TestFinalResultIsNotLimitedByTheTerminal(t *testing.T) {
 
 	if view, final := m.View().Content, ansi.Strip(m.finalText()); view != "" || !strings.Contains(final, "web-12") {
 		t.Errorf("after quitting the view must be empty and the final text complete:\n%s", final)
+	}
+}
+
+// printed returns the text a command prints above the live view, "" if it prints nothing.
+func printed(cmd tea.Cmd) string {
+	if cmd == nil {
+		return ""
+	}
+	return fmt.Sprint(cmd())
+}
+
+func TestFKeyShowsTheMissedOutputOnceAndSwitchesBack(t *testing.T) {
+	m := liveModel(new(int))
+	m.Update(OutputReceived{Stream: "s2", Data: "Cloning into '.'...\n", Offset: 0})
+
+	_, cmd := m.Update(press('f', false))
+	if out := printed(cmd); m.mode != ModeFull || !strings.Contains(out, "Cloning into") {
+		t.Fatalf("mode=%v printed=%q, want the full output with the output so far", m.mode, out)
+	}
+
+	_, cmd = m.Update(press('f', false))
+	_, more := m.Update(OutputReceived{Stream: "s2", Data: "Receiving objects: 100%\n", Offset: 20})
+	if m.mode != ModeTree || printed(cmd) != "" || printed(more) != "" {
+		t.Fatalf("mode=%v, want the step tree which prints nothing", m.mode)
+	}
+
+	_, cmd = m.Update(press('f', false))
+	if out := printed(cmd); !strings.Contains(out, "Receiving objects") || strings.Contains(out, "Cloning into") {
+		t.Errorf("printed %q, want only the output since the full output was shown last", out)
+	}
+}
+
+func TestFooterNamesTheViewTheKeySwitchesTo(t *testing.T) {
+	m := liveModel(new(int))
+	if footer := ansi.Strip(m.footer()); !strings.Contains(footer, "f full output") {
+		t.Errorf("footer in the tree: %q", footer)
+	}
+	m.Update(press('f', false))
+	if footer := ansi.Strip(m.footer()); !strings.Contains(footer, "f step tree") {
+		t.Errorf("footer in the full output: %q", footer)
 	}
 }

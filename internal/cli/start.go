@@ -18,7 +18,8 @@ import (
 )
 
 // followHelp explains how following a run ends, for the help of the commands which follow runs.
-const followHelp = "Ctrl+C asks whether to terminate the run or to detach from it.\n" +
+const followHelp = "Press f to switch between the step tree and the full output, Ctrl+C asks whether\n" +
+	"to terminate the run or to detach from it.\n" +
 	"The exit code tells how the run ended: 0 successful, 1 failed, 130 terminated or detached."
 
 // runFlags are the flags of commands which start runs.
@@ -46,7 +47,7 @@ func addRunFlags(cmd *cobra.Command, flags *runFlags) {
 // addFollowFlags adds the flags of commands which follow runs.
 func addFollowFlags(cmd *cobra.Command, flags *followFlags) {
 	cmd.Flags().BoolVarP(&flags.quiet, "quiet", "q", false, "only print the result")
-	cmd.Flags().BoolVar(&flags.full, "full", false, "show the complete output instead of the step tree")
+	cmd.Flags().BoolVar(&flags.full, "full", false, "start with the complete output instead of the step tree (f switches)")
 }
 
 // startRun asks for what is missing, starts the run and follows it.
