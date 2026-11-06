@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,7 +23,7 @@ type runnableKind struct {
 var (
 	actionKind = runnableKind{
 		kind:  resolve.KindAction,
-		short: "List, view and run actions",
+		short: "List, view, run, export, apply and delete actions",
 		resolve: func(r *resolve.Resolver, ctx context.Context, arg string) (resolve.Runnable, error) {
 			action, err := r.Action(ctx, arg)
 			return resolve.Runnable{Action: &action}, err
@@ -30,7 +31,7 @@ var (
 	}
 	workflowKind = runnableKind{
 		kind:  resolve.KindWorkflow,
-		short: "List, view and run workflows",
+		short: "List, view, run, export, apply and delete workflows",
 		resolve: func(r *resolve.Resolver, ctx context.Context, arg string) (resolve.Runnable, error) {
 			workflow, err := r.Workflow(ctx, arg)
 			return resolve.Runnable{Workflow: &workflow}, err
@@ -48,10 +49,11 @@ func newWorkflowCommand(a *App) *cobra.Command {
 	return newRunnableCommand(a, workflowKind)
 }
 
-// newRunnableCommand builds list, view and run for actions or workflows.
+// newRunnableCommand builds list, view, run, export, apply, delete and example for actions or workflows.
 func newRunnableCommand(a *App, kind runnableKind) *cobra.Command {
 	cmd := &cobra.Command{Use: kind.kind.Singular, Short: kind.short}
 	cmd.AddCommand(newRunnableListCommand(a, kind), newRunnableViewCommand(a, kind), newRunnableRunCommand(a, kind))
+	cmd.AddCommand(newDefinitionCommands(a, definitionKind[resolve.Runnable]{kind: kind.kind, find: kind.resolve, id: resolve.Runnable.ID, name: resolve.Runnable.Name})...)
 	return cmd
 }
 
@@ -104,10 +106,60 @@ func workflowListing(opts api.ListOptions) listing[api.Workflow] {
 	}
 }
 
-// newRunnableViewCommand views the steps and variables of an action or workflow.
+// newRunnableViewCommand views the steps and variables of an action or workflow. The steps come
+// from its definition, which names what a step uses (its template, its action) instead of ids.
 func newRunnableViewCommand(a *App, kind runnableKind) *cobra.Command {
-	return newViewCommand(a, kind.kind, "View the steps and variables of "+withArticle(kind.kind.Singular), kind.resolve,
-		resolve.Runnable.ID, renderRunnable)
+	noun := kind.kind.Singular
+	var web bool
+	cmd := &cobra.Command{
+		Use:        "view <" + noun + ">",
+		Short:      "View the steps and variables of " + withArticle(noun),
+		SuggestFor: []string{"show"},
+		Args:       argOrPick(a, noun),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			runnable, err := resolveRunnable(cmd.Context(), a, kind, optionalArg(argv))
+			if err != nil {
+				return err
+			}
+			if web {
+				return a.openWeb(kind.kind.Resource + "/" + runnable.ID())
+			}
+			if a.Structured() {
+				return a.printEndpoint(cmd.Context(), api.Show(kind.kind.Resource, runnable.ID()))
+			}
+			client, err := a.Client()
+			if err != nil {
+				return err
+			}
+			definition, err := api.Get[definitionSteps](cmd.Context(), client, api.Definition(kind.kind.Resource, runnable.ID()))
+			if err != nil {
+				return err
+			}
+			a.IO.Println(renderRunnable(runnable, definition, a.IO.TableWidth(0)))
+			return nil
+		},
+	}
+	addWebFlag(cmd, &web)
+	return cmd
+}
+
+// definitionSteps are the steps of a definition, as far as the view shows them.
+type definitionSteps struct {
+	Steps []definitionStep `json:"steps"`
+}
+
+// definitionStep is one step of an action (name, type and what it does) or of a workflow (its action).
+type definitionStep struct {
+	Name       string            `json:"name"`
+	Type       string            `json:"type"`
+	Command    string            `json:"command"`
+	Script     string            `json:"script"`
+	Template   any               `json:"template"`
+	DstPath    string            `json:"dst_path"`
+	File       string            `json:"file"`
+	Action     string            `json:"action"`
+	Variables  map[string]string `json:"variables"`
+	Conditions [][]any           `json:"conditions"`
 }
 
 // newRunnableRunCommand runs an action or workflow.
@@ -142,7 +194,7 @@ func resolveRunnable(ctx context.Context, a *App, kind runnableKind, arg string)
 }
 
 // renderRunnable renders the details of an action or workflow.
-func renderRunnable(r resolve.Runnable, width int) string {
+func renderRunnable(r resolve.Runnable, definition definitionSteps, width int) string {
 	lines := []string{"", " " + ui.Title.Render(r.Name()) + "  " + ui.Muted.Render(r.Type()+" · "+r.ID())}
 	if r.Action != nil && len(r.Action.Tags) > 0 {
 		lines = append(lines, " "+tags(r.Action.Tags))
@@ -152,7 +204,7 @@ func renderRunnable(r resolve.Runnable, width int) string {
 	lines = append(lines, "", ui.Bold.Render(" Variables"))
 	lines = append(lines, renderVariables(r.Variables(), width)...)
 	lines = append(lines, "", ui.Bold.Render(" Steps"))
-	lines = append(lines, renderSteps(r, width)...)
+	lines = append(lines, renderSteps(definition.Steps, width)...)
 
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -169,26 +221,21 @@ func renderVariables(variables []api.VariableDefinition, width int) []string {
 	return []string{ui.Indent(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows, width-2), "  ")}
 }
 
-// renderSteps lists the steps of an action or the actions of a workflow.
-func renderSteps(r resolve.Runnable, width int) []string {
-	var rows [][]string
-	if r.Action != nil {
-		for _, step := range r.Action.Steps {
-			rows = append(rows, []string{ui.Faint.Render(fmt.Sprint(step.Order + 1)), ui.Bold.Render(step.Name), ui.Muted.Render(stepTypeLabel(step.Type)), ui.Code.Render(stepSummary(step.Execution))})
-		}
-	} else {
-		for _, step := range r.Workflow.Steps {
-			name := "?"
-			if step.Action != nil {
-				name = step.Action.Name
-			}
-			rows = append(rows, []string{ui.Faint.Render(fmt.Sprint(step.Order + 1)), ui.Bold.Render(name), ui.Muted.Render("action")})
-		}
-	}
-	if len(rows) == 0 {
+// renderSteps lists the steps of an action or the actions of a workflow, with what each does and
+// whether it has conditions.
+func renderSteps(steps []definitionStep, width int) []string {
+	if len(steps) == 0 {
 		return []string{ui.Muted.Render("   none")}
 	}
-	return []string{ui.Indent(ui.Table([]string{"#", "STEP", "TYPE", ""}[:len(rows[0])], rows, width-2), "  ")}
+	rows := make([][]string, len(steps))
+	for i, step := range steps {
+		name, kind := step.Name, stepTypeLabel(step.Type)
+		if step.Action != "" {
+			name, kind = step.Action, "action"
+		}
+		rows[i] = []string{ui.Faint.Render(fmt.Sprint(i + 1)), ui.Bold.Render(name), ui.Muted.Render(kind), ui.Code.Render(stepSummary(step)), conditionsMark(step)}
+	}
+	return []string{ui.Indent(ui.Table([]string{"#", "STEP", "TYPE", "", "IF"}, rows, width-2), "  ")}
 }
 
 // stepTypeLabel turns execute_shell_script into "shell script".
@@ -196,18 +243,75 @@ func stepTypeLabel(stepType string) string {
 	return strings.ReplaceAll(strings.TrimPrefix(stepType, "execute_"), "_", " ")
 }
 
-// stepSummary shows the essential setting of a step, like its command, on one line.
-func stepSummary(execution map[string]any) string {
-	for _, key := range []string{"command", "script", "path", "destination", "file", "template"} {
-		if value, ok := execution[key].(string); ok && value != "" {
-			line := strings.TrimSpace(strings.SplitN(strings.TrimPrefix(value, "#!/bin/bash\n"), "\n", 2)[0])
-			if len([]rune(line)) > 60 {
-				line = string([]rune(line)[:59]) + "…"
-			}
-			return line
-		}
+// stepSummary shows the essential setting of a step on one line: the first line of its command
+// or script, the template and where it goes, the modified file, or the fixed variables of an action.
+func stepSummary(step definitionStep) string {
+	switch {
+	case step.Command != "":
+		return firstLine(step.Command)
+	case step.Script != "":
+		return firstLine(step.Script)
+	case step.Template != nil:
+		return templateName(step.Template) + " → " + step.DstPath
+	case step.File != "":
+		return step.File
+	case len(step.Variables) > 0:
+		return fixedVariables(step.Variables)
 	}
 	return ""
+}
+
+// firstLine is the first line of a text which says something (not the shebang), shortened.
+func firstLine(text string) string {
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#!") {
+			continue
+		}
+		if len([]rune(line)) > 60 {
+			line = string([]rune(line)[:59]) + "…"
+		}
+		return line
+	}
+	return ""
+}
+
+// templateName is the name of a referenced or an embedded template.
+func templateName(template any) string {
+	switch t := template.(type) {
+	case string:
+		return t
+	case map[string]any:
+		name, _ := t["name"].(string)
+		return name
+	}
+	return ""
+}
+
+// fixedVariables lists the fixed variable values of a workflow step, sorted by name.
+func fixedVariables(variables map[string]string) string {
+	names := make([]string, 0, len(variables))
+	for name := range variables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, len(names))
+	for i, name := range names {
+		parts[i] = name + "=" + variables[name]
+	}
+	return strings.Join(parts, " ")
+}
+
+// conditionsMark tells how many conditions a step has, nothing without conditions.
+func conditionsMark(step definitionStep) string {
+	count := 0
+	for _, group := range step.Conditions {
+		count += len(group)
+	}
+	if count == 0 {
+		return ""
+	}
+	return ui.Muted.Render(fmt.Sprint(count))
 }
 
 // variableNames lists the variable names of a runnable.

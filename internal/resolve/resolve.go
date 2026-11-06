@@ -91,6 +91,29 @@ func (r *Resolver) Team(ctx context.Context, arg string) (api.Team, error) {
 	return find(ctx, r, KindTeam, arg, func(t api.Team) entry[api.Team] { return named(t, t.ID, t.Name) })
 }
 
+// Named finds the item of a kind which has exactly this name (case-insensitive) in the team of
+// the resolver and returns its id, or "" if there is none. Several items of the name, which can
+// happen across teams, are an ambiguity.
+func (r *Resolver) Named(ctx context.Context, kind Kind, name string) (string, error) {
+	entries, err := search(ctx, r, kind.Resource, name, func(item api.Reference) entry[api.Reference] { return named(item, item.ID, item.Name) })
+	if err != nil {
+		return "", err
+	}
+	var matches []entry[api.Reference]
+	for _, e := range entries {
+		if strings.EqualFold(e.Name, name) {
+			matches = append(matches, e)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", nil
+	case 1:
+		return matches[0].ID, nil
+	}
+	return "", &AmbiguousError{Kind: kind, Arg: name, Candidates: labels(matches)}
+}
+
 // find resolves an argument: exact name, then id, then a choice among partial matches.
 // Without an argument the user picks one of all items.
 func find[T any](ctx context.Context, r *Resolver, kind Kind, arg string, describe func(T) entry[T]) (T, error) {

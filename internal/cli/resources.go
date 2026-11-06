@@ -78,7 +78,7 @@ func newPipeCommand(a *App) *cobra.Command {
 
 // newTemplateCommand groups the template commands.
 func newTemplateCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "template", Short: "List and view file templates"}
+	cmd := &cobra.Command{Use: "template", Short: "List, view, export, apply and delete file templates"}
 
 	var page pageOptions
 	var search string
@@ -104,6 +104,10 @@ func newTemplateCommand(a *App) *cobra.Command {
 
 	cmd.AddCommand(list, newViewCommand(a, resolve.KindTemplate, "View the content of a template",
 		(*resolve.Resolver).Template, func(t api.Template) string { return t.ID }, renderTemplate))
+	cmd.AddCommand(newDefinitionCommands(a, definitionKind[api.Template]{
+		kind: resolve.KindTemplate, find: (*resolve.Resolver).Template,
+		id: func(t api.Template) string { return t.ID }, name: func(t api.Template) string { return t.Name },
+	})...)
 	return cmd
 }
 

@@ -116,6 +116,14 @@ func TestCompleteFixedValues(t *testing.T) {
 	completeArgs(t, fakeAPI{}, "api", "P").is(t, "POST", "PUT", "PATCH")
 }
 
+func TestDefinitionFilesAreCompletedByTheShell(t *testing.T) {
+	c := completeArgs(t, fakeAPI{}, "action", "apply", "-f", "")
+
+	if strings.Join(c.values, "|") != "yml|yaml|json" || c.directive&cobra.ShellCompDirectiveFilterFileExt == 0 || c.directive&cobra.ShellCompDirectiveNoFileComp != 0 {
+		t.Errorf("completions = %q, directive = %v", c.values, c.directive)
+	}
+}
+
 func TestFreeTextAndCommandsWithoutArgumentsCompleteNoFiles(t *testing.T) {
 	completeArgs(t, fakeAPI{}, "server", "list", "--search", "").is(t)
 	completeArgs(t, fakeAPI{}, "status", "").is(t)

@@ -73,6 +73,31 @@ func Post(path string, body any) Endpoint {
 	return Endpoint{Method: http.MethodPost, Path: path, Body: body}
 }
 
+// Put is a PUT endpoint with a JSON body.
+func Put(path string, body any) Endpoint {
+	return Endpoint{Method: http.MethodPut, Path: path, Body: body}
+}
+
+// Delete is the endpoint deleting a single resource.
+func Delete(resource, id string) Endpoint {
+	return Endpoint{Method: http.MethodDelete, Path: resource + "/" + url.PathEscape(id)}
+}
+
+// Definition is the endpoint of the definition of a resource: the portable description an export file contains.
+func Definition(resource, id string) Endpoint {
+	return Endpoint{Method: http.MethodGet, Path: resource + "/" + url.PathEscape(id) + "/definition"}
+}
+
+// Example is the endpoint of an example definition of a kind which uses every option: as JSON,
+// or as YAML with comments which explain the keys.
+func Example(kind string, asYAML bool) Endpoint {
+	e := Endpoint{Method: http.MethodGet, Path: "definitions/" + url.PathEscape(kind) + "/example"}
+	if asYAML {
+		e.Query = url.Values{"format": {"yaml"}}
+	}
+	return e
+}
+
 // RunEndpoint is the endpoint of a run, optionally with the output of all steps.
 func RunEndpoint(id string, withOutput bool) Endpoint {
 	e := Show(Runs, id)

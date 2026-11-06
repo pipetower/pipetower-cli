@@ -184,13 +184,13 @@ func TestWrongCallShowsTheUsage(t *testing.T) {
 
 func TestWithoutTerminalResourcesMustBeGiven(t *testing.T) {
 	for missing, calls := range map[string][][]string{
-		"action":   {{"action", "view"}, {"action", "run"}},
-		"workflow": {{"workflow", "view"}, {"workflow", "run"}},
+		"action":   {{"action", "view"}, {"action", "run"}, {"action", "export"}, {"action", "delete"}},
+		"workflow": {{"workflow", "view"}, {"workflow", "run"}, {"workflow", "export"}, {"workflow", "delete"}},
 		"run":      {{"run", "view"}, {"run", "watch"}, {"run", "cancel"}},
 		"server":   {{"server", "view"}, {"server", "connect"}, {"server", "disconnect"}, {"terminal", "open"}},
 		"session":  {{"terminal", "join"}},
 		"pipe":     {{"pipe", "view"}},
-		"template": {{"template", "view"}},
+		"template": {{"template", "view"}, {"template", "export"}, {"template", "delete"}},
 		"team":     {{"team", "view"}},
 	} {
 		for _, call := range calls {

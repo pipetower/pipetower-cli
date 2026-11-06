@@ -37,6 +37,17 @@ PIPETOWER_TEAM=<team name>
 pt --help
 ```
 
+Actions, workflows and templates are described by definition files (YAML), the same files the
+export in Pipetower writes. `pt` prints, checks and applies them:
+
+```sh
+pt action example > deploy.yml          # a definition with every option, to start from
+pt action apply -f deploy.yml --dry-run # check it against your team
+pt action apply -f deploy.yml           # create it, or replace the action of that name
+pt action export "Deploy App"           # print the definition of an existing action
+pt action delete "Deploy App"
+```
+
 ## Development
 
 ```sh

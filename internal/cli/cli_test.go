@@ -62,10 +62,17 @@ func TestExitCode(t *testing.T) {
 }
 
 func TestStepSummary(t *testing.T) {
-	if got := stepSummary(map[string]any{"script": "#!/bin/bash\nset -e\n"}); got != "set -e" {
-		t.Errorf("summary = %q", got)
+	cases := map[string]definitionStep{
+		"set -e":               {Script: "#!/bin/bash\nset -e\n"},
+		"git pull":             {Command: "git pull"},
+		"Env file → /app/":     {Template: "Env file", DstPath: "/app/"},
+		"Embedded → /etc/":     {Template: map[string]any{"name": "Embedded"}, DstPath: "/etc/"},
+		"/app/.env":            {File: "/app/.env"},
+		"BRANCH=main ENV=prod": {Action: "Deploy", Variables: map[string]string{"ENV": "prod", "BRANCH": "main"}},
 	}
-	if got := stepSummary(map[string]any{"command": "git pull"}); got != "git pull" {
-		t.Errorf("summary = %q", got)
+	for want, step := range cases {
+		if got := stepSummary(step); got != want {
+			t.Errorf("summary = %q, want %q", got, want)
+		}
 	}
 }

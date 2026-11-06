@@ -1,4 +1,8 @@
-action                   List, view and run actions
+action                   List, view, run, export, apply and delete actions
+  apply                  Create or update an action from a definition file
+  delete <action>        Delete an action
+  example                Print an example definition with every option
+  export <action>        Print the definition of an action as YAML
   list                   List actions
   run <action>           Run an action on servers and follow it live
   view <action>          View the steps and variables of an action
@@ -21,7 +25,11 @@ status                   Check the configuration, the API token and the real-tim
 team                     List and view your teams and their members
   list                   List your teams
   view <team>            View the members of a team
-template                 List and view file templates
+template                 List, view, export, apply and delete file templates
+  apply                  Create or update a template from a definition file
+  delete <template>      Delete a template
+  example                Print an example definition with every option
+  export <template>      Print the definition of a template as YAML
   list                   List templates
   view <template>        View the content of a template
 terminal                 List, open and join shared terminal sessions
@@ -32,7 +40,11 @@ update                   Update pt to the latest version
 variable                 List the variables of your account, a team or a server
   list                   List the variables of your account, or of a server or team
 version                  Print the version of pt
-workflow                 List, view and run workflows
+workflow                 List, view, run, export, apply and delete workflows
+  apply                  Create or update a workflow from a definition file
+  delete <workflow>      Delete a workflow
+  example                Print an example definition with every option
+  export <workflow>      Print the definition of a workflow as YAML
   list                   List workflows
   run <workflow>         Run a workflow on servers and follow it live
   view <workflow>        View the steps and variables of a workflow

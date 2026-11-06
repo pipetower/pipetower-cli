@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -86,5 +87,17 @@ func TestTableFitsIntoTheWidth(t *testing.T) {
 	}
 	if out := Table([]string{"TEAM", "ID"}, rows, 0); !strings.Contains(out, "John Wagner (member)") {
 		t.Errorf("without a width nothing is shortened:\n%s", out)
+	}
+}
+
+func TestPrintYAMLAcceptsEscapedSlashes(t *testing.T) {
+	var out bytes.Buffer
+	o := &IO{RawOut: &out}
+
+	if err := o.PrintYAML([]byte(`{"content":"APP_URL=https:\/\/example.com\nX=1"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "content: |-\n  APP_URL=https://example.com\n  X=1\n" {
+		t.Errorf("yaml:\n%s", got)
 	}
 }

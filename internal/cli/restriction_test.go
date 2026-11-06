@@ -21,6 +21,7 @@ func restrictedAPI() fakeAPI {
 	return fakeAPI{
 		"GET /api/v1/workflows?limit=100&search=Deploy+App": `{"data":[` + restrictedWorkflow + `],"meta":{"has_more":false}}`,
 		"GET /api/v1/workflows/w1":                          restrictedWorkflow,
+		"GET /api/v1/workflows/w1/definition":               `{"kind":"workflow","name":"Deploy App","steps":[{"action":"Build","variables":{"BRANCH":"main"}}]}`,
 		"GET /api/v1/servers?limit=100&search=Shop":         teamServers,
 		"GET /api/v1/servers?limit=100&tag=web":             teamServers,
 		"GET /api/v1/servers?limit=100&team=t1":             teamServers,

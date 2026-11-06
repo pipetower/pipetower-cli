@@ -19,6 +19,8 @@ type Error struct {
 	Path     string
 	Message  string
 	Fields   map[string][]string
+	// Body is the raw response, for details beyond the message and the fields.
+	Body json.RawMessage
 }
 
 // newError decodes an error response.
@@ -29,7 +31,7 @@ func newError(instance string, e Endpoint, status int, body []byte) *Error {
 	}
 	_ = json.Unmarshal(body, &payload)
 
-	return &Error{Instance: instance, Status: status, Method: e.Method, Path: e.Path, Message: payload.Message, Fields: payload.Errors}
+	return &Error{Instance: instance, Status: status, Method: e.Method, Path: e.Path, Message: payload.Message, Fields: payload.Errors, Body: body}
 }
 
 // Error implements error.
@@ -39,8 +41,13 @@ func (e *Error) Error() string {
 
 // IsNotFound tells whether the error is a 404 response.
 func IsNotFound(err error) bool {
+	return IsStatus(err, http.StatusNotFound)
+}
+
+// IsStatus tells whether the error is a response with the status.
+func IsStatus(err error, status int) bool {
 	var apiErr *Error
-	return errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound
+	return errors.As(err, &apiErr) && apiErr.Status == status
 }
 
 // IsTransient tells whether retrying the request later can succeed: the instance was

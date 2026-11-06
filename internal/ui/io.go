@@ -96,6 +96,8 @@ func (o *IO) PrintJSON(raw []byte) error {
 
 // PrintYAML converts raw JSON to YAML, keeping the key order.
 func (o *IO) PrintYAML(raw []byte) error {
+	// JSON may escape slashes ("https:\/\/"), which YAML does not know
+	raw = bytes.ReplaceAll(raw, []byte(`\/`), []byte("/"))
 	var node yaml.Node
 	if err := yaml.Unmarshal(raw, &node); err != nil {
 		return err

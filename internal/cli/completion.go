@@ -128,6 +128,8 @@ func flagValues(cmd *cobra.Command, name string) completion {
 		return completeStatuses
 	case name == "output":
 		return completeFixed(FormatTable, FormatJSON, FormatYAML)
+	case name == "file":
+		return completeDefinitionFiles
 	case slices.Contains(freeTextFlags, name):
 		return completeFixed()
 	}
@@ -154,7 +156,15 @@ func completeWith(a *App, complete completion, cmd *cobra.Command, args []string
 	for i, c := range candidates {
 		completions[i] = cobra.CompletionWithDesc(c.Value, c.Description)
 	}
+	if directive&cobra.ShellCompDirectiveFilterFileExt != 0 {
+		return completions, directive // the shell completes the files itself
+	}
 	return completions, directive | cobra.ShellCompDirectiveNoFileComp
+}
+
+// completeDefinitionFiles lets the shell complete the definition files: YAML and JSON.
+func completeDefinitionFiles(context.Context, *App, *cobra.Command, []string, string) ([]resolve.Candidate, cobra.ShellCompDirective, error) {
+	return []resolve.Candidate{{Value: "yml"}, {Value: "yaml"}, {Value: "json"}}, cobra.ShellCompDirectiveFilterFileExt, nil
 }
 
 // completionResolver returns the resolver of the app, limited to --team, which never asks.
