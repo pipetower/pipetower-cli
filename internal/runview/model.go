@@ -2,12 +2,12 @@ package runview
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/pipetower/pipetower-cli/internal/api"
@@ -184,7 +184,7 @@ func (m *model) requestTermination() tea.Msg {
 	return terminated{err: m.terminate(ctx)}
 }
 
-// View renders the live tree (or status line) and the footer. After quitting the view is empty,
+// View renders the live tree (or the status line with the upcoming steps) and the footer. After quitting the view is empty,
 // the final result is printed as normal output, so that it is never cut to the terminal height.
 func (m *model) View() tea.View {
 	if m.outcome != OutcomeNone {
@@ -194,10 +194,13 @@ func (m *model) View() tea.View {
 		return tea.NewView(" " + m.spinner.View() + ui.Muted.Render(" Connecting…") + "\n\n" + m.footer())
 	}
 
-	body := m.statusLine()
-	if m.mode != ModeFull {
-		// the blank line and the footer below take two lines of the terminal height
-		body = renderLive(m.tracker, m.now, m.spinner.View(), m.width, m.height-2)
+	// the blank line and the footer below take two lines of the terminal height
+	body := renderLive(m.tracker, m.now, m.spinner.View(), m.width, m.height-2)
+	if m.mode == ModeFull {
+		body = m.statusLine()
+		if upcoming := fitHeight(renderUpcoming(m.tracker, m.now, m.spinner.View(), m.width), m.height-3); upcoming != "" {
+			body += "\n" + upcoming
+		}
 	}
 	return tea.NewView(body + "\n\n" + m.footer())
 }
@@ -235,9 +238,18 @@ func (m *model) statusLine() string {
 	text := " " + m.spinner.View() + " " + ui.Bold.Render(strings.Join(running, ", ")) +
 		ui.Muted.Render("  "+ui.Clock(ui.ElapsedTime(run.StartedAt, run.FinishedAt, m.now)))
 	if progress != "" {
-		text += "  " + ui.Faint.Render(ansi.Truncate(progress, max(10, m.width-lipgloss.Width(text)-4), "…"))
+		text += "  " + ui.Faint.Render(progress)
 	}
-	return text
+	return ansi.Truncate(text, max(10, m.width-1), "…")
+}
+
+// fitHeight keeps the first lines of the text which fit into the height, the rest is counted.
+func fitHeight(text string, height int) string {
+	lines := strings.Split(text, "\n")
+	if text == "" || height <= 0 || len(lines) <= height {
+		return text
+	}
+	return strings.Join(lines[:height-1], "\n") + "\n" + ui.Faint.Render(fmt.Sprintf(" … %d more", len(lines)-height+1))
 }
 
 // toggleTarget names the view the toggle key switches to.

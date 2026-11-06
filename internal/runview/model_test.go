@@ -3,8 +3,10 @@ package runview
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -182,5 +184,55 @@ func TestFooterNamesTheViewTheKeySwitchesTo(t *testing.T) {
 	m.Update(press('f', false))
 	if footer := ansi.Strip(m.footer()); !strings.Contains(footer, "f step tree") {
 		t.Errorf("footer in the full output: %q", footer)
+	}
+}
+
+func TestFullOutputShowsTheUpcomingStepsLikeTheTree(t *testing.T) {
+	m := liveModel(new(int))
+	m.Update(press('f', false))
+
+	view := ansi.Strip(m.View().Content)
+	var lines []string
+	for _, line := range strings.Split(view, "\n") {
+		lines = append(lines, strings.TrimRight(line, " "))
+	}
+	// the servers at the left, the steps below them indented as deep as in the tree
+	want := []string{"     ◷ Install dependencies", "   ◷ Restart PHP", " ◷ staging  10.0.0.4", "   ◷ Deploy app"}
+	for _, line := range want {
+		if !slices.Contains(lines, line) {
+			t.Errorf("missing %q in the live view:\n%s", line, view)
+		}
+	}
+	if !strings.Contains(view, "prod  5.75.144.227") || strings.Contains(view, "Create release dir") {
+		t.Errorf("want the running server, but no finished step:\n%s", view)
+	}
+}
+
+func TestUpcomingStepsShowAPreviewLikeTheTree(t *testing.T) {
+	run := deployRun()
+	run.Executions = run.Executions[:1]
+	deploy := &run.Executions[0].Steps[0]
+	for _, name := range []string{"Migrate", "Build assets", "Warm cache"} {
+		deploy.Steps = append(deploy.Steps, api.Step{Type: api.StepAction, Name: name, Status: api.StatusPending})
+	}
+	tracker := NewTracker()
+	tracker.SetRun(run)
+
+	upcoming := ansi.Strip(renderUpcoming(tracker, time.Now(), "●", 100))
+	if !strings.Contains(upcoming, "◷ Build assets") || strings.Contains(upcoming, "Warm cache") || !strings.Contains(upcoming, "… 1 more") {
+		t.Errorf("want 3 pending steps and the count of the rest, no server line for one server:\n%s", upcoming)
+	}
+	if strings.Contains(upcoming, "prod") {
+		t.Errorf("a single server needs no server line:\n%s", upcoming)
+	}
+}
+
+func TestStatusLineFitsTheTerminalWidth(t *testing.T) {
+	m := liveModel(new(int))
+	m.Update(press('f', false))
+	m.Update(tea.WindowSizeMsg{Width: 40, Height: 20})
+
+	if width := ansi.StringWidth(m.statusLine()); width > 39 {
+		t.Errorf("status line is %d wide in a terminal of 40", width)
 	}
 }

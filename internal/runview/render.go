@@ -313,3 +313,40 @@ func Render(run api.Run, width int) string {
 	}
 	return renderRun(tracker, time.Now(), "●", width, modeLive) + "\n"
 }
+
+// renderUpcoming renders the pending steps below the status line of the full output, exactly as
+// the step tree shows them: indented, at most a preview per list, and with the server when several run.
+func renderUpcoming(t *Tracker, now time.Time, spinner string, width int) string {
+	v := &view{tracker: t, now: now, spinner: spinner, width: min(width, maxWidth), mode: modeLive}
+	executions := v.executions()
+	for _, e := range executions {
+		start := len(v.lines)
+		if len(executions) > 1 {
+			v.row(0, v.icon(e.Status)+" "+ui.Bold.Render(e.Server.Name)+"  "+ui.Faint.Render(e.Server.Host), "")
+		}
+		v.pendingSteps(e.Steps, 1)
+		if len(executions) > 1 && len(v.lines) == start+1 {
+			v.lines = v.lines[:start] // a server without upcoming steps
+		}
+	}
+	return strings.Join(v.lines, "\n")
+}
+
+// pendingSteps renders the pending steps of a list and of its running workflow steps.
+func (v *view) pendingSteps(steps []api.Step, depth int) {
+	pending := 0
+	for i := range steps {
+		step := &steps[i]
+		switch {
+		case step.Status == api.StatusPending:
+			pending++
+			if pending > pendingPreview {
+				v.row(depth, ui.Faint.Render(fmt.Sprintf("… %d more", len(steps)-i)), "")
+				return
+			}
+			v.step(step, depth)
+		case step.Type == api.StepWorkflow && step.Status == api.StatusRunning:
+			v.pendingSteps(step.Steps, depth+1)
+		}
+	}
+}
