@@ -64,3 +64,16 @@ func TestMissingFileIsAUsageError(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestALiteralBlockAtTheEndOfTheFileKeepsItsFinalLineBreak(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cron.yml")
+	if err := os.WriteFile(path, []byte("kind: template\nname: Cron\nfile_name: a\ncontent: |\n  * * * * * run\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := Load(path, nil)
+
+	if err != nil || d.Data["content"] != "* * * * * run\n" {
+		t.Errorf("content = %q, err = %v", d.Data["content"], err)
+	}
+}

@@ -46,7 +46,7 @@ func Parse(content []byte, source string) (Definition, error) {
 	if err := yaml.Unmarshal(content, &data); err != nil {
 		return Definition{}, invalid(source, "It is not valid YAML: "+strings.TrimPrefix(err.Error(), "yaml: "))
 	}
-	if data == nil {
+	if len(bytes.TrimSpace(content)) == 0 || data == nil {
 		return Definition{}, invalid(source, "It is empty.")
 	}
 
@@ -90,7 +90,7 @@ func read(path string, stdin io.Reader) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", fault.New(fault.Problem{Title: "Cannot read " + path, Detail: err.Error(), Code: fault.ExitUsage})
 	}
-	return bytes.TrimSpace(content), path, nil
+	return content, path, nil // not trimmed: the final line break ends a literal block at the end of the file
 }
 
 // isKind tells whether the kind is known.
