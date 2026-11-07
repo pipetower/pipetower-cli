@@ -8,8 +8,8 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/fault"
 )
 
-// exampleFile is a minimal .pipetower, shown where one has to be created.
-const exampleFile = `{"environment": "prod", "environments": {"prod": {"url": "https://app.pipetower.com", "token": "<token>"}}}`
+// AddHint is the command which creates the configuration file with a first environment.
+const AddHint = "pt env add prod --url https://app.pipetower.com --token <token>"
 
 // MissingError tells that the token or the URL was found nowhere.
 type MissingError struct {
@@ -53,8 +53,7 @@ func (e *MissingError) Problem() fault.Problem {
 		Detail: "pt authenticates with an API token from a .pipetower file (JSON) with one or more environments.\n\n" + e.searchedText(),
 		Hints: []fault.Hint{
 			{Label: "Create a token", Value: e.accountURL() + "  →  API tokens"},
-			{Label: "Save it", Value: fmt.Sprintf("echo '%s' > ~/%s", exampleFile, FileName)},
-			{Label: "Protect it", Value: "chmod 600 ~/" + FileName},
+			{Label: "Save it", Value: AddHint},
 		},
 		Code: fault.ExitConfig,
 	}
@@ -86,6 +85,27 @@ func (e *MissingError) accountURL() string {
 		return "<your Pipetower URL>/account"
 	}
 	return e.URL + "/account"
+}
+
+// ExistingEnvironmentError tells that an environment of the name is already configured.
+type ExistingEnvironmentError struct {
+	Name string
+	Path string
+}
+
+// Error implements error.
+func (e *ExistingEnvironmentError) Error() string {
+	return "environment " + e.Name + " exists"
+}
+
+// Problem implements fault.Explainer.
+func (e *ExistingEnvironmentError) Problem() fault.Problem {
+	return fault.Problem{
+		Title:  fmt.Sprintf("The environment “%s” exists already", e.Name),
+		Detail: "It is configured in " + e.Path + ", choose another name or change it there.",
+		Hints:  []fault.Hint{{Label: "See them", Value: "pt env list"}},
+		Code:   fault.ExitUsage,
+	}
 }
 
 // NoEnvironmentError tells that none of several environments is active.

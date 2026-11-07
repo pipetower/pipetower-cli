@@ -16,8 +16,15 @@ it offers new versions when it starts, or run `pt update`.
 
 ## Configure
 
-Create an API token in Pipetower (**Account → API tokens**) and put it into `~/.pipetower`, a JSON
-file with one or more environments (instances):
+Create an API token in Pipetower (**Account → API tokens**) and add the instance as environment:
+
+```sh
+pt env add prod --url https://app.pipetower.com --token <token>
+pt env add local --url http://pipetower.localhost --token <token> --team Ops
+pt status
+```
+
+This writes `~/.pipetower`, a JSON file with the environments, readable by you only:
 
 ```json
 {
@@ -28,8 +35,6 @@ file with one or more environments (instances):
   }
 }
 ```
-
-Protect it with `chmod 600 ~/.pipetower` and check it with `pt status`.
 
 `environment` is the active one, `pt env list` shows them and `pt env use local` switches. A `team`
 limits all commands to that team while the environment is active: `pt team use Ops` sets it,

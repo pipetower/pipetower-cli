@@ -8,7 +8,8 @@ action                   List, view, run, export, apply and delete actions
   view <action>          View the steps and variables of an action
 api <method> <path>      Send an authenticated request to the REST API and print the JSON
 completion <shell>       Print the shell completion script (bash, zsh, fish, powershell)
-env                      List the configured environments (instances) and switch between them
+env                      Add, list and switch the configured environments (instances)
+  add <name>             Add an environment: an instance with its URL and your API token
   list                   List the environments, the active one marked
   use <environment>      Make an environment the active one for all following commands
 pipe                     List and view pipes (automations)

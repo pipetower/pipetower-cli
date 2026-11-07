@@ -284,7 +284,7 @@ func TestLoadReportsMissingToken(t *testing.T) {
 	if !errors.As(err, &missing) || missing.Key != EnvToken {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(missing.Problem().Hints[0].Value, "https://x/account") || !strings.Contains(missing.Problem().Hints[1].Value, `"environments"`) {
+	if !strings.Contains(missing.Problem().Hints[0].Value, "https://x/account") || !strings.Contains(missing.Problem().Hints[1].Value, "pt env add") {
 		t.Errorf("hints = %v", missing.Problem().Hints)
 	}
 }
@@ -329,5 +329,33 @@ func TestGatewayURLMustBeEncryptedUnlessLocal(t *testing.T) {
 		if err := ValidateGatewayURL(url); (err == nil) != valid {
 			t.Errorf("%s: err = %v", url, err)
 		}
+	}
+}
+
+func TestAddEnvironmentCreatesTheFileAndActivatesTheFirstOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), FileName)
+
+	first, err := AddEnvironment(path, "prod", Environment{URL: "https://app.pipetower.com/", Token: "p"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := AddEnvironment(path, "local", Environment{URL: "http://pipetower.localhost", Token: "l", Team: "Ops"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, exists := AddEnvironment(path, "prod", Environment{URL: "https://x", Token: "t"})
+	_, insecure := AddEnvironment(path, "bad", Environment{URL: "http://app.pipetower.com", Token: "t"})
+
+	cfg, err := Load(testEnv(t, filepath.Dir(path), "", nil))
+	if err != nil || !first || second || cfg.Environment != "prod" || cfg.Environments["local"].Team != "Ops" || cfg.Environments["prod"].URL != "https://app.pipetower.com/" {
+		t.Errorf("err = %v, first %v, second %v, cfg %+v", err, first, second, cfg)
+	}
+	var existing *ExistingEnvironmentError
+	var invalid *InvalidURLError
+	if !errors.As(exists, &existing) || !errors.As(insecure, &invalid) {
+		t.Errorf("exists = %v, insecure = %v", exists, insecure)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v", info.Mode().Perm())
 	}
 }

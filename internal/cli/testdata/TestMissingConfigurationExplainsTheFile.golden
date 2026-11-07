@@ -9,6 +9,5 @@
       /.pipetower
 
     Create a token   <your Pipetower URL>/account  →  API tokens
-    Save it          echo '{"environment": "prod", "environments": {"prod": {"url": "https://app.pipetower.com", "token": "<token>"}}}' > ~/.pipetower
-    Protect it       chmod 600 ~/.pipetower
+    Save it          pt env add prod --url https://app.pipetower.com --token <token>
 

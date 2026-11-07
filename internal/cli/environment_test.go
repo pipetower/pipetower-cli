@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -172,5 +173,35 @@ func TestEnvUseOffersTheEnvironmentsToPick(t *testing.T) {
 
 	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "Using local") || strings.Join(p.offered, "|") != "local|● prod" {
 		t.Errorf("exit %d, offered %q\nstdout:\n%s\nstderr:\n%s", out.code, p.offered, out.stdout, out.stderr)
+	}
+}
+
+func TestEnvAddCreatesTheFileAndFurtherOnesAreAddedToIt(t *testing.T) {
+	dir := t.TempDir()
+
+	first := run(t, dir, "env", "add", "prod", "--url", "https://app.pipetower.com", "--token", "p")
+	second := run(t, dir, "env", "add", "local", "--url", "http://pipetower.localhost", "--token", "l", "--team", "Ops")
+	list := run(t, dir, "env", "list")
+	again := run(t, dir, "env", "add", "prod", "--url", "https://x", "--token", "t")
+	noURL := run(t, dir, "env", "add", "x", "--token", "t")
+	noToken := run(t, dir, "env", "add", "x", "--url", "https://x")
+
+	if first.code != fault.ExitOK || !strings.Contains(first.stdout, "Added prod") || !strings.Contains(first.stdout, "active") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", first.code, first.stdout, first.stderr)
+	}
+	if second.code != fault.ExitOK || strings.Contains(second.stdout, "active") || !strings.Contains(second.stderr, "pt env use local") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", second.code, second.stdout, second.stderr)
+	}
+	if content, _ := os.ReadFile(filepath.Join(dir, ".pipetower")); !strings.Contains(string(content), `"environment": "prod"`) || !strings.Contains(string(content), `"team": "Ops"`) {
+		t.Errorf("file:\n%s", content)
+	}
+	if list.code != fault.ExitOK || !regexp.MustCompile(`●\s+prod`).MatchString(list.stdout) || !strings.Contains(list.stdout, "Ops") {
+		t.Errorf("exit %d\nstdout:\n%s", list.code, list.stdout)
+	}
+	if again.code != fault.ExitUsage || !strings.Contains(again.stderr, "exists already") {
+		t.Errorf("exit %d, stderr:\n%s", again.code, again.stderr)
+	}
+	if noURL.code != fault.ExitUsage || !strings.Contains(noURL.stderr, "Missing --url") || noToken.code != fault.ExitUsage || !strings.Contains(noToken.stderr, "Missing --token") {
+		t.Errorf("no url: exit %d %s\nno token: exit %d %s", noURL.code, noURL.stderr, noToken.code, noToken.stderr)
 	}
 }

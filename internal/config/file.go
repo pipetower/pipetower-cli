@@ -84,6 +84,34 @@ func (f *file) write(changes map[string]any) error {
 	return os.WriteFile(f.Path, append(content, '\n'), 0o600)
 }
 
+// AddEnvironment adds an environment to the file, which is created if it doesn't exist. The
+// first environment of a file becomes the active one. An environment of that name must not exist.
+func AddEnvironment(path, name string, env Environment) (activated bool, err error) {
+	f, err := readFile(path)
+	if os.IsNotExist(err) {
+		f, err = &file{Path: path, raw: map[string]json.RawMessage{}}, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if _, exists := f.Environments[name]; exists {
+		return false, &ExistingEnvironmentError{Name: name, Path: path}
+	}
+	if err := validateURL(env.URL, Source{Path: path}); err != nil {
+		return false, err
+	}
+	if f.Environments == nil {
+		f.Environments = map[string]Environment{}
+	}
+	f.Environments[name] = env
+
+	changes := map[string]any{"environments": f.Environments}
+	if activated = f.Environment == ""; activated {
+		changes["environment"] = name
+	}
+	return activated, f.write(changes)
+}
+
 // SetEnvironment makes the named environment of the file the active one.
 func SetEnvironment(path, name string) error {
 	f, err := readFile(path)

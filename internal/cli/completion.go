@@ -25,7 +25,7 @@ const completionTimeout = 5 * time.Second
 const completedRuns = 30
 
 // freeTextFlags take values which can't be completed, they complete nothing (instead of file names).
-var freeTextFlags = []string{"search", "limit", "page", "data"}
+var freeTextFlags = []string{"search", "limit", "page", "data", "url", "token"}
 
 // placeholder finds the argument placeholders in a command's use line: run <action> → action.
 var placeholder = regexp.MustCompile(`<([a-z]+)>`)
@@ -83,6 +83,8 @@ func argument(cmd *cobra.Command, name string) completion {
 		return completeNames(resolve.KindTeam)
 	case "environment":
 		return completeEnvironments
+	case "name":
+		return completeFixed() // a new name
 	case "run":
 		return completeRuns(cmd.Name() == "cancel") // only unfinished runs can be canceled
 	case "session":

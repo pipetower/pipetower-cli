@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,9 +18,68 @@ import (
 
 // newEnvCommand groups the environment commands.
 func newEnvCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "env", Short: "List the configured environments (instances) and switch between them"}
-	cmd.AddCommand(newEnvListCommand(a), newEnvUseCommand(a))
+	cmd := &cobra.Command{Use: "env", Short: "Add, list and switch the configured environments (instances)"}
+	cmd.AddCommand(newEnvAddCommand(a), newEnvListCommand(a), newEnvUseCommand(a))
 	return cmd
+}
+
+// newEnvAddCommand adds an environment to the configuration file, creating the file at first.
+func newEnvAddCommand(a *App) *cobra.Command {
+	var env config.Environment
+	cmd := &cobra.Command{
+		Use:   "add <name>",
+		Short: "Add an environment: an instance with its URL and your API token",
+		Long: "Add an environment to the configuration file, which is created as ~/.pipetower if there is\n" +
+			"none yet. The first environment becomes the active one. The token is asked for when --token\n" +
+			"is left out in a terminal.",
+		Example: "  " + config.AddHint + "\n  pt env add local --url http://pipetower.localhost --token <token> --team Ops",
+		Args:    args("name"),
+		RunE: func(cmd *cobra.Command, argv []string) error {
+			if env.URL == "" {
+				return usageProblem(cmd, "Missing --url")
+			}
+			if env.Token == "" {
+				prompter := a.Prompter()
+				if prompter == nil {
+					return usageProblem(cmd, "Missing --token")
+				}
+				token, err := prompter.Input("API token")
+				if err != nil {
+					return err
+				}
+				env.Token = token
+			}
+
+			path := a.configPath()
+			activated, err := config.AddEnvironment(path, argv[0], env)
+			if err != nil {
+				return err
+			}
+			a.cfg = nil // read again with the new environment
+			state := ""
+			if activated {
+				state = ", active"
+			}
+			a.IO.Println(" " + ui.Success.Render("✓") + " Added " + ui.Bold.Render(argv[0]) + ui.Muted.Render("  "+env.URL+" · team "+ui.Or(env.Team, "all")+" · in "+path+state))
+			if !activated {
+				a.IO.Errorln(ui.Faint.Render(" Switch to it with pt env use " + argv[0]))
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&env.URL, "url", "", "the URL of the Pipetower instance")
+	cmd.Flags().StringVar(&env.Token, "token", "", "your API token for the instance (Account → API tokens)")
+	cmd.Flags().StringVar(&env.Team, "team", "", "limit all commands to this team while the environment is active")
+	return cmd
+}
+
+// configPath is the file environments are added to: the one which holds the environments in use,
+// or ~/.pipetower when there is none yet.
+func (a *App) configPath() string {
+	if cfg, err := a.environments(); err == nil && cfg.EnvironmentsPath != "" {
+		return cfg.EnvironmentsPath
+	}
+	return filepath.Join(a.env.Home, config.FileName)
 }
 
 // newEnvListCommand lists the environments of the configuration file with the active one marked.
