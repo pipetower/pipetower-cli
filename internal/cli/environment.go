@@ -9,6 +9,7 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/config"
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 	"github.com/pipetower/pipetower-cli/internal/resolve"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
@@ -68,23 +69,48 @@ func newEnvUseCommand(a *App) *cobra.Command {
 		Long: "Make an environment the active one: all following commands talk to its instance with its\n" +
 			"token, until another one is activated. It is written to the file which holds the environments.",
 		Example: "  pt env use local",
-		Args:    args("environment"),
+		Args:    argOrPick(a, "environment"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			cfg, err := a.environments()
 			if err != nil {
 				return err
 			}
-			if err := config.SetEnvironment(cfg.EnvironmentsPath, argv[0]); err != nil {
+			name, err := pickEnvironment(a, cfg, optionalArg(argv))
+			if err != nil {
 				return err
 			}
-			env := cfg.Environments[argv[0]]
-			a.IO.Println(" " + ui.Success.Render("✓") + " Using " + ui.Bold.Render(argv[0]) + ui.Muted.Render("  "+env.URL+" · team "+ui.Or(env.Team, "all")))
+			if err := config.SetEnvironment(cfg.EnvironmentsPath, name); err != nil {
+				return err
+			}
+			env := cfg.Environments[name]
+			a.IO.Println(" " + ui.Success.Render("✓") + " Using " + ui.Bold.Render(name) + ui.Muted.Render("  "+env.URL+" · team "+ui.Or(env.Team, "all")))
 			if cfg.EnvironmentSource.Env != "" {
-				a.IO.Errorln(ui.RenderWarning("$" + cfg.EnvironmentSource.Env + " is set and overrides the file, unset it to use " + argv[0]))
+				a.IO.Errorln(ui.RenderWarning("$" + cfg.EnvironmentSource.Env + " is set and overrides the file, unset it to use " + name))
 			}
 			return nil
 		},
 	}
+}
+
+// pickEnvironment returns the given environment, or lets the user pick one of the configured ones.
+func pickEnvironment(a *App, cfg *config.Config, name string) (string, error) {
+	if name != "" {
+		return name, nil
+	}
+	names := cfg.EnvironmentNames()
+	options := make([]prompt.Option, len(names))
+	for i, name := range names {
+		mark := " "
+		if name == cfg.Environment {
+			mark = "●"
+		}
+		options[i] = prompt.Option{Mark: mark, Columns: []string{name, cfg.Environments[name].URL}}
+	}
+	index, err := a.Prompter().Pick("Which environment?", options)
+	if err != nil {
+		return "", err
+	}
+	return names[index], nil
 }
 
 // newTeamUseCommand limits all following commands to a team, or lifts the limit with --all.
@@ -101,7 +127,7 @@ func newTeamUseCommand(a *App) *cobra.Command {
 			if all && len(argv) == 0 {
 				return nil
 			}
-			return args("team")(cmd, argv)
+			return argOrPick(a, "team")(cmd, argv)
 		},
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			cfg, err := a.environments()
@@ -118,8 +144,8 @@ func newTeamUseCommand(a *App) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				// any of the user's teams, not only the one currently set
-				found, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(cmd.Context(), argv[0])
+				// any of the user's teams, not only the one currently set; without a name the user picks one
+				found, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(cmd.Context(), optionalArg(argv))
 				if err != nil {
 					return err
 				}

@@ -200,14 +200,15 @@ func TestWrongCallShowsTheUsage(t *testing.T) {
 
 func TestWithoutTerminalResourcesMustBeGiven(t *testing.T) {
 	for missing, calls := range map[string][][]string{
-		"action":   {{"action", "view"}, {"action", "run"}, {"action", "export"}, {"action", "delete"}},
-		"workflow": {{"workflow", "view"}, {"workflow", "run"}, {"workflow", "export"}, {"workflow", "delete"}},
-		"run":      {{"run", "view"}, {"run", "watch"}, {"run", "cancel"}},
-		"server":   {{"server", "view"}, {"server", "connect"}, {"server", "disconnect"}, {"terminal", "open"}},
-		"session":  {{"terminal", "join"}},
-		"pipe":     {{"pipe", "view"}},
-		"template": {{"template", "view"}, {"template", "export"}, {"template", "delete"}},
-		"team":     {{"team", "view"}},
+		"action":      {{"action", "view"}, {"action", "run"}, {"action", "export"}, {"action", "delete"}},
+		"workflow":    {{"workflow", "view"}, {"workflow", "run"}, {"workflow", "export"}, {"workflow", "delete"}},
+		"run":         {{"run", "view"}, {"run", "watch"}, {"run", "cancel"}},
+		"server":      {{"server", "view"}, {"server", "connect"}, {"server", "disconnect"}, {"terminal", "open"}},
+		"session":     {{"terminal", "join"}},
+		"pipe":        {{"pipe", "view"}},
+		"template":    {{"template", "view"}, {"template", "export"}, {"template", "delete"}},
+		"team":        {{"team", "view"}, {"team", "use"}},
+		"environment": {{"env", "use"}},
 	} {
 		for _, call := range calls {
 			out := execute(t, fakeAPI{}, "test-token", call...)
