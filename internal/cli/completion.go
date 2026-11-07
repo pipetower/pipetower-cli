@@ -81,6 +81,8 @@ func argument(cmd *cobra.Command, name string) completion {
 		return completeNames(resolve.KindTemplate)
 	case "team":
 		return completeNames(resolve.KindTeam)
+	case "environment":
+		return completeEnvironments
 	case "run":
 		return completeRuns(cmd.Name() == "cancel") // only unfinished runs can be canceled
 	case "session":

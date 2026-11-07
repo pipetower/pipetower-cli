@@ -34,14 +34,14 @@ func NewRootCommand(a *App) *cobra.Command {
 	pf.StringVarP(&a.flags.output, "output", "o", FormatTable, "output format: table, json or yaml")
 	pf.BoolVar(&a.flags.noInput, "no-input", false, "never prompt, fail instead")
 	pf.BoolVar(&a.flags.noColor, "no-color", false, "disable colors (also via NO_COLOR)")
-	pf.StringVar(&a.flags.team, "team", "", "only resources of this team (name or id), also set by PIPETOWER_TEAM")
-	pf.BoolVar(&a.flags.allTeams, "all-teams", false, "resources of all your teams, also where PIPETOWER_TEAM sets one")
+	pf.StringVar(&a.flags.team, "team", "", "only resources of this team (name or id) for this command, see pt team use")
+	pf.BoolVar(&a.flags.allTeams, "all-teams", false, "resources of all your teams for this command, also where a team is set")
 	pf.BoolP("help", "h", false, "show the help")
 
 	root.AddCommand(
 		newActionCommand(a), newWorkflowCommand(a), newRunCommand(a), newTerminalCommand(a),
 		newServerCommand(a), newVariableCommand(a), newPipeCommand(a), newTemplateCommand(a), newTeamCommand(a),
-		newStatusCommand(a), newAPICommand(a), newUpdateCommand(a), newVersionCommand(a), newCompletionCommand(),
+		newEnvCommand(a), newStatusCommand(a), newAPICommand(a), newUpdateCommand(a), newVersionCommand(a), newCompletionCommand(),
 	)
 	// one way for each task: --help instead of a help command, our completion command instead of cobra's
 	root.SetHelpCommand(&cobra.Command{Hidden: true})

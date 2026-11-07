@@ -14,9 +14,9 @@ import (
 
 // newTeamCommand groups the team commands.
 func newTeamCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "team", Short: "List and view your teams and their members"}
+	cmd := &cobra.Command{Use: "team", Short: "List and view your teams, limit all commands to one of them"}
 	cmd.AddCommand(newTeamListCommand(a), newViewCommand(a, resolve.KindTeam, "View the members of a team",
-		(*resolve.Resolver).Team, func(t api.Team) string { return t.ID }, renderTeam))
+		(*resolve.Resolver).Team, func(t api.Team) string { return t.ID }, renderTeam), newTeamUseCommand(a))
 	return cmd
 }
 

@@ -8,6 +8,9 @@ action                   List, view, run, export, apply and delete actions
   view <action>          View the steps and variables of an action
 api <method> <path>      Send an authenticated request to the REST API and print the JSON
 completion <shell>       Print the shell completion script (bash, zsh, fish, powershell)
+env                      List the configured environments (instances) and switch between them
+  list                   List the environments, the active one marked
+  use <environment>      Make an environment the active one for all following commands
 pipe                     List and view pipes (automations)
   list                   List pipes
   view <pipe>            View the trigger and steps of a pipe
@@ -22,8 +25,9 @@ server                   List and view servers, their health and connections
   list                   List servers with CPU, memory, disk and load
   view <server>          View the dashboard of a server: system, usage and latest runs
 status                   Check the configuration, the API token and the real-time gateway
-team                     List and view your teams and their members
+team                     List and view your teams, limit all commands to one of them
   list                   List your teams
+  use <team>             Limit all following commands to a team, or --all for all teams
   view <team>            View the members of a team
 template                 List, view, export, apply and delete file templates
   apply                  Create or update a template from a definition file

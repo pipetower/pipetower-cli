@@ -66,7 +66,7 @@ func newApplyCommand(a *App, kind resolve.Kind) *cobra.Command {
 		Short: "Create or update " + withArticle(noun) + " from a definition file",
 		Long: "Create or update " + withArticle(noun) + " from a definition file (YAML or JSON, see “pt " + noun + " example”).\n" +
 			"The file describes the whole " + noun + " by its name: " + withArticle(noun) + " of that name in the team is\n" +
-			"replaced, otherwise it is created in the team (--team or PIPETOWER_TEAM, needed with several\n" +
+			"replaced, otherwise it is created in the team (--team or pt team use, needed with several\n" +
 			"teams). Names in the file (templates, actions, servers, tags) are resolved in that team.\n" +
 			"--dry-run only checks the file, nothing is saved. Problems are listed by their path in the\n" +
 			"file, like steps.1.conditions.0.0.rule.",

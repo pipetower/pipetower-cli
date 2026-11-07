@@ -1,7 +1,7 @@
 
  ✗  No API token found
 
-    pt authenticates with an API token from a .pipetower file.
+    pt authenticates with an API token from a .pipetower file (JSON) with one or more environments.
 
     Looked in $PIPETOWER_URL / $PIPETOWER_TOKEN and:
       ~/.pipetower
@@ -9,6 +9,6 @@
       /.pipetower
 
     Create a token   <your Pipetower URL>/account  →  API tokens
-    Save it          printf 'PIPETOWER_TOKEN=<token>\n' >> ~/.pipetower
+    Save it          echo '{"environment": "prod", "environments": {"prod": {"url": "https://app.pipetower.com", "token": "<token>"}}}' > ~/.pipetower
     Protect it       chmod 600 ~/.pipetower
 

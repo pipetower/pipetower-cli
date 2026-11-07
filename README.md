@@ -16,20 +16,28 @@ it offers new versions when it starts, or run `pt update`.
 
 ## Configure
 
-Create an API token in Pipetower (**Account → API tokens**) and put it into `~/.pipetower`:
+Create an API token in Pipetower (**Account → API tokens**) and put it into `~/.pipetower`, a JSON
+file with one or more environments (instances):
 
-```sh
-printf 'PIPETOWER_URL=https://app.pipetower.com\nPIPETOWER_TOKEN=<token>\n' > ~/.pipetower
-chmod 600 ~/.pipetower
-pt status
+```json
+{
+  "environment": "prod",
+  "environments": {
+    "prod":  {"url": "https://app.pipetower.com", "token": "<token>"},
+    "local": {"url": "http://pipetower.localhost", "token": "<token>", "team": "Ops"}
+  }
+}
 ```
 
-To limit a project folder to one of your teams, put a `.pipetower` with only the team into it
-(and into its `.gitignore`):
+Protect it with `chmod 600 ~/.pipetower` and check it with `pt status`.
 
-```sh
-PIPETOWER_TEAM=<team name>
-```
+`environment` is the active one, `pt env list` shows them and `pt env use local` switches. A `team`
+limits all commands to that team while the environment is active: `pt team use Ops` sets it,
+`pt team use --all` lifts it, `--team` and `--all-teams` override it for one command.
+
+A project folder can carry a `.pipetower` with only `{"environment": "local", "team": "Ops"}` (put it
+into `.gitignore`), the environments then come from `~/.pipetower`. In CI, `PIPETOWER_URL` and
+`PIPETOWER_TOKEN` replace the file, `PIPETOWER_ENV` and `PIPETOWER_TEAM` choose environment and team.
 
 ## Usage
 

@@ -56,13 +56,29 @@ func execute(t *testing.T, api http.Handler, token string, args ...string) resul
 
 	dir := t.TempDir()
 	if token != "" {
-		file := "PIPETOWER_URL=" + server.URL + "\nPIPETOWER_TOKEN=" + token + "\n"
-		if err := os.WriteFile(filepath.Join(dir, ".pipetower"), []byte(file), 0o600); err != nil {
-			t.Fatal(err)
-		}
+		writeConfig(t, dir, configFile(server.URL, token, ""))
 	}
 
 	return run(t, dir, args...)
+}
+
+// configFile is a .pipetower with one environment "test" of the URL, token and team.
+func configFile(url, token, team string) string {
+	content := `{"environment": "test", "environments": {"test": {"url": "` + url + `", "token": "` + token + `"`
+	if team != "" {
+		content += `, "team": "` + team + `"`
+	}
+	return content + "}}}\n"
+}
+
+// writeConfig writes the .pipetower of the directory.
+func writeConfig(t *testing.T, dir, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, ".pipetower")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // run executes the command tree like main does, with plain non-interactive streams.

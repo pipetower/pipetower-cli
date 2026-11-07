@@ -1,13 +1,26 @@
-// Package config discovers the instance URL and API token of the CLI.
+// Package config discovers the instance URL, the API token and the team scope of the CLI.
 //
-// The token is taken from $PIPETOWER_TOKEN, or else from the first .pipetower file with a
-// token: in the working directory, one of its parents or ~/.pipetower. The URL always comes
-// from the same place as the token, so that a file of a cloned repository can never redirect
-// the token to another server. Only $PIPETOWER_URL, which the user sets, may override it.
+// They live in a .pipetower file (JSON) with named environments, e.g. a local and a production
+// instance, of which one is active:
 //
-// The team which limits all resources is taken from $PIPETOWER_TEAM, or else from the first file
-// with a team, independent of the token: a project's .pipetower may contain only its team and use
-// the token of ~/.pipetower. A team can't send the token anywhere, it only narrows what is shown.
+//	{
+//	  "environment": "prod",
+//	  "environments": {
+//	    "local": {"url": "http://pipetower.localhost", "token": "…", "team": "Ops"},
+//	    "prod":  {"url": "https://app.pipetower.com", "token": "…"}
+//	  }
+//	}
+//
+// The environments are taken from the first file which has some: in the working directory, one of
+// its parents or ~/.pipetower. URL and token of an environment always come from the same file, so
+// that a file of a cloned repository can never redirect a token to another server. $PIPETOWER_TOKEN
+// and $PIPETOWER_URL, which the user sets, replace them (e.g. in CI).
+//
+// Which environment is active comes from $PIPETOWER_ENV, or else from the nearest file which names
+// one: a project's .pipetower may hold only {"environment": "local"} and use the environments of
+// ~/.pipetower. The team which limits all commands comes from $PIPETOWER_TEAM, else from the nearest
+// file with a "team", else from the active environment. A team or an environment name can't send
+// the token anywhere, they only choose among what the trusted file holds.
 package config
 
 import (
@@ -16,6 +29,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/pipetower/pipetower-cli/internal/fault"
@@ -27,6 +41,7 @@ const (
 	EnvURL   = "PIPETOWER_URL"
 	EnvToken = "PIPETOWER_TOKEN"
 	EnvTeam  = "PIPETOWER_TEAM"
+	EnvName  = "PIPETOWER_ENV"
 )
 
 // Source tells where a value came from: an environment variable or a file path.
@@ -43,12 +58,26 @@ func (s Source) String() string {
 	return s.Path
 }
 
+// Environment is one configured Pipetower instance.
+type Environment struct {
+	URL   string `json:"url"`
+	Token string `json:"token"`
+	// Team (name or id) limits the resources when the environment is active, empty for all teams.
+	Team string `json:"team,omitempty"`
+}
+
 // Config is the resolved configuration.
 type Config struct {
 	URL         string
 	Token       string
 	URLSource   Source
 	TokenSource Source
+	// Environment is the name of the active environment, empty when URL and token come from $PIPETOWER_*.
+	Environment       string
+	EnvironmentSource Source
+	// Environments are all configured environments by name, from the file at EnvironmentsPath.
+	Environments     map[string]Environment
+	EnvironmentsPath string
 	// Team (name or id) limits the resources, empty for all teams.
 	Team       string
 	TeamSource Source
@@ -75,63 +104,121 @@ func SystemEnv() Env {
 // Load resolves the configuration and validates that URL and token are present and safe.
 func Load(env Env) (*Config, error) {
 	cfg := &Config{Searched: candidateFiles(env.Cwd, env.Home)}
+	files := cfg.readFiles()
+	cfg.loadEnvironments(files, env)
 
 	if token := env.Getenv(EnvToken); token != "" {
 		cfg.Token, cfg.TokenSource = token, Source{Env: EnvToken}
-	} else {
-		cfg.loadFiles(env)
+		if url := env.Getenv(EnvURL); url != "" {
+			cfg.URL, cfg.URLSource = normalizeURL(url), Source{Env: EnvURL}
+		}
+	} else if err := cfg.activate(files, env); err != nil {
+		return cfg, err
 	}
-	if url := env.Getenv(EnvURL); url != "" {
-		cfg.URL, cfg.URLSource = normalizeURL(url), Source{Env: EnvURL}
-	}
-	if team := strings.TrimSpace(env.Getenv(EnvTeam)); team != "" {
-		cfg.Team, cfg.TeamSource = team, Source{Env: EnvTeam}
-	} else {
-		cfg.loadTeam()
-	}
+	cfg.loadTeam(files, env)
 
 	return cfg, cfg.validate(env.Home)
 }
 
-// loadFiles takes the token and the URL from the first file with a token.
-func (c *Config) loadFiles(env Env) {
+// EnvironmentNames lists the configured environments in a stable order.
+func (c *Config) EnvironmentNames() []string {
+	names := make([]string, 0, len(c.Environments))
+	for name := range c.Environments {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// readFiles reads the candidate files which exist and belong to the current user, nearest first.
+// Only a file which can't be parsed is worth a warning, a missing or unreadable one is just skipped.
+func (c *Config) readFiles() []*file {
+	var files []*file
 	for _, path := range c.Searched {
-		values, err := readFile(path)
-		if err == nil && values[EnvToken] == "" && values[EnvURL] != "" {
-			c.Warnings = append(c.Warnings, fmt.Sprintf("Ignored the %s in %s, it has no %s next to it", EnvURL, path, EnvToken))
+		if info, err := os.Stat(path); err != nil || info.IsDir() {
+			continue
 		}
-		if err != nil || values[EnvToken] == "" {
+		f, err := readFile(path)
+		if err != nil {
+			if !os.IsPermission(err) {
+				c.Warnings = append(c.Warnings, fmt.Sprintf("Ignored %s: %s", path, err))
+			}
 			continue
 		}
 		if !ownedByCurrentUser(path) {
 			c.Warnings = append(c.Warnings, fmt.Sprintf("Ignored %s, it belongs to another user", path))
 			continue
 		}
+		files = append(files, f)
+	}
+	return files
+}
 
-		source := Source{Path: path}
-		c.Token, c.TokenSource = values[EnvToken], source
-		if values[EnvURL] != "" {
-			c.URL, c.URLSource = normalizeURL(values[EnvURL]), source
+// loadEnvironments takes the environments from the nearest file which has some.
+func (c *Config) loadEnvironments(files []*file, env Env) {
+	for _, f := range files {
+		if len(f.Environments) == 0 {
+			continue
 		}
-		c.Warnings = append(c.Warnings, fileWarnings(path, env)...)
-		c.Warnings = append(c.Warnings, shadowWarning(path, c.URL, env.Home)...)
+		c.Environments, c.EnvironmentsPath = f.Environments, f.Path
+		c.Warnings = append(c.Warnings, fileWarnings(f.Path, env)...)
+		c.Warnings = append(c.Warnings, shadowWarning(f.Path, env.Home)...)
 		return
 	}
 }
 
-// loadTeam takes the team from the first file with a team, which may be another than the one of
-// the token.
-func (c *Config) loadTeam() {
-	for _, path := range c.Searched {
-		values, err := readFile(path)
-		if err != nil || values[EnvTeam] == "" {
-			continue
+// activate chooses the active environment and takes URL and token from it: named by $PIPETOWER_ENV
+// or the nearest file, or the only one there is.
+func (c *Config) activate(files []*file, env Env) error {
+	if len(c.Environments) == 0 {
+		return &MissingError{Key: EnvToken, Searched: c.Searched, URL: normalizeURL(env.Getenv(EnvURL)), Home: env.Home}
+	}
+
+	// a nearer file may name the environment, a farther one names its own environments, not these
+	name, source := strings.TrimSpace(env.Getenv(EnvName)), Source{Env: EnvName}
+	for _, f := range files {
+		if name == "" && f.Environment != "" {
+			name, source = f.Environment, Source{Path: f.Path}
 		}
-		if !ownedByCurrentUser(path) {
-			continue // warned about when it has a token, a team alone can do no harm
+		if f.Path == c.EnvironmentsPath {
+			break
 		}
-		c.Team, c.TeamSource = values[EnvTeam], Source{Path: path}
+	}
+	if name == "" && len(c.Environments) == 1 {
+		name, source = c.EnvironmentNames()[0], Source{Path: c.EnvironmentsPath}
+	}
+	if name == "" {
+		return &NoEnvironmentError{Names: c.EnvironmentNames(), Path: c.EnvironmentsPath}
+	}
+	active, known := c.Environments[name]
+	if !known {
+		return &UnknownEnvironmentError{Name: name, Source: source, Names: c.EnvironmentNames(), Path: c.EnvironmentsPath}
+	}
+
+	fileSource := Source{Path: c.EnvironmentsPath}
+	c.Environment, c.EnvironmentSource = name, source
+	c.Token, c.TokenSource = active.Token, fileSource
+	c.URL, c.URLSource = normalizeURL(active.URL), fileSource
+	if url := env.Getenv(EnvURL); url != "" {
+		c.URL, c.URLSource = normalizeURL(url), Source{Env: EnvURL}
+	}
+	return nil
+}
+
+// loadTeam takes the team from $PIPETOWER_TEAM, the nearest file with a team, or the active environment.
+func (c *Config) loadTeam(files []*file, env Env) {
+	if team := strings.TrimSpace(env.Getenv(EnvTeam)); team != "" {
+		c.Team, c.TeamSource = team, Source{Env: EnvTeam}
 		return
+	}
+	for _, f := range files {
+		if f.Team != "" {
+			c.Team, c.TeamSource = f.Team, Source{Path: f.Path}
+			return
+		}
+	}
+	if active, ok := c.Environments[c.Environment]; ok && active.Team != "" {
+		c.Team, c.TeamSource = active.Team, Source{Path: c.EnvironmentsPath}
 	}
 }
 
@@ -139,9 +226,9 @@ func (c *Config) loadTeam() {
 func (c *Config) validate(home string) error {
 	switch {
 	case c.Token == "":
-		return &MissingError{Key: EnvToken, Searched: c.Searched, URL: c.URL, Home: home}
+		return &MissingError{Key: EnvToken, Searched: c.Searched, URL: c.URL, Home: home, Environment: c.Environment, Path: c.EnvironmentsPath}
 	case c.URL == "":
-		return &MissingError{Key: EnvURL, Searched: c.Searched, Home: home, TokenSource: c.TokenSource}
+		return &MissingError{Key: EnvURL, Searched: c.Searched, Home: home, TokenSource: c.TokenSource, Environment: c.Environment, Path: c.EnvironmentsPath}
 	}
 	return validateURL(c.URL, c.URLSource)
 }
@@ -201,17 +288,17 @@ func normalizeURL(url string) string {
 	return strings.TrimRight(strings.TrimSpace(url), "/")
 }
 
-// shadowWarning tells when a project file is used instead of ~/.pipetower, so that nobody runs
-// commands on another instance unnoticed.
-func shadowWarning(path, url, home string) []string {
+// shadowWarning tells when the environments of a project file are used instead of those of
+// ~/.pipetower, so that nobody runs commands on another instance unnoticed.
+func shadowWarning(path, home string) []string {
 	homeFile := filepath.Join(home, FileName)
 	if home == "" || path == homeFile {
 		return nil
 	}
-	if values, err := readFile(homeFile); err != nil || values[EnvToken] == "" {
+	if f, err := readFile(homeFile); err != nil || len(f.Environments) == 0 {
 		return nil
 	}
-	return []string{fmt.Sprintf("Using %s (%s) instead of ~/%s", path, url, FileName)}
+	return []string{fmt.Sprintf("Using the environments of %s instead of ~/%s", path, FileName)}
 }
 
 // ValidateGatewayURL accepts the websocket gateway of the instance: wss, and ws only for local

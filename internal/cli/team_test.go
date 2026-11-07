@@ -3,8 +3,6 @@ package cli
 import (
 	"context"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -25,11 +23,7 @@ func executeInProject(t *testing.T, routes fakeAPI, team string, args ...string)
 	t.Cleanup(server.Close)
 
 	dir := t.TempDir()
-	file := filepath.Join(dir, ".pipetower")
-	content := "PIPETOWER_URL=" + server.URL + "\nPIPETOWER_TOKEN=test-token\nPIPETOWER_TEAM=" + team + "\n"
-	if err := os.WriteFile(file, []byte(content), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	file := writeConfig(t, dir, configFile(server.URL, "test-token", team))
 	return run(t, dir, args...), file
 }
 

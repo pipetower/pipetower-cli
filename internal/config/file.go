@@ -1,59 +1,119 @@
 package config
 
 import (
-	"bufio"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
-// readFile parses a KEY=VALUE file. Blank lines, comments and an "export " prefix are allowed.
-func readFile(path string) (map[string]string, error) {
-	file, err := os.Open(path)
+// file is the content of a .pipetower file: the environments, the active one and the team, all
+// optional. Other keys are kept as they are when the file is written.
+type file struct {
+	Path         string
+	Environment  string
+	Team         string
+	Environments map[string]Environment
+	raw          map[string]json.RawMessage
+}
+
+// readFile parses a .pipetower file (JSON).
+func readFile(path string) (*file, error) {
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
-	values := map[string]string{}
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		if key, value, ok := parseLine(scanner.Text()); ok {
-			values[key] = value
-		}
+	f := &file{Path: path, raw: map[string]json.RawMessage{}}
+	if len(bytes.TrimSpace(content)) == 0 {
+		return f, nil
 	}
-
-	return values, scanner.Err()
+	if err := json.Unmarshal(content, &f.raw); err != nil {
+		return nil, fmt.Errorf("not valid JSON (%s)", jsonError(err))
+	}
+	if err := decode(f.raw, "environment", &f.Environment); err != nil {
+		return nil, err
+	}
+	if err := decode(f.raw, "team", &f.Team); err != nil {
+		return nil, err
+	}
+	if err := decode(f.raw, "environments", &f.Environments); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
-// parseLine parses one KEY=VALUE line.
-func parseLine(line string) (string, string, bool) {
-	line = strings.TrimSpace(line)
-	if line == "" || strings.HasPrefix(line, "#") {
-		return "", "", false
+// decode reads one key of the file, if present.
+func decode(raw map[string]json.RawMessage, key string, into any) error {
+	value, ok := raw[key]
+	if !ok {
+		return nil
 	}
-
-	key, value, found := strings.Cut(strings.TrimPrefix(line, "export "), "=")
-	if !found {
-		return "", "", false
+	if err := json.Unmarshal(value, into); err != nil {
+		return fmt.Errorf("%q has the wrong type (%s)", key, jsonError(err))
 	}
-
-	return strings.TrimSpace(key), unquote(strings.TrimSpace(value)), true
+	return nil
 }
 
-// unquote removes matching single or double quotes around a value.
-func unquote(value string) string {
-	if len(value) >= 2 {
-		first, last := value[0], value[len(value)-1]
-		if first == last && (first == '"' || first == '\'') {
-			return value[1 : len(value)-1]
-		}
+// jsonError shortens a JSON error to its reason.
+func jsonError(err error) string {
+	var syntax *json.SyntaxError
+	if errors.As(err, &syntax) {
+		return fmt.Sprintf("%s at byte %d", syntax.Error(), syntax.Offset)
 	}
-	return value
+	return err.Error()
+}
+
+// write saves the file with the given keys changed, other keys kept, readable by the user only.
+func (f *file) write(changes map[string]any) error {
+	for key, value := range changes {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		f.raw[key] = encoded
+	}
+	content, err := json.MarshalIndent(f.raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(f.Path, append(content, '\n'), 0o600)
+}
+
+// SetEnvironment makes the named environment of the file the active one.
+func SetEnvironment(path, name string) error {
+	f, err := readFile(path)
+	if err != nil {
+		return err
+	}
+	if _, ok := f.Environments[name]; !ok {
+		return &UnknownEnvironmentError{Name: name, Names: environmentNames(f.Environments), Path: path}
+	}
+	return f.write(map[string]any{"environment": name})
+}
+
+// SetTeam limits the named environment of the file to the team, or to no team (all teams) with "".
+func SetTeam(path, environment, team string) error {
+	f, err := readFile(path)
+	if err != nil {
+		return err
+	}
+	active, ok := f.Environments[environment]
+	if !ok {
+		return &UnknownEnvironmentError{Name: environment, Names: environmentNames(f.Environments), Path: path}
+	}
+	active.Team = team
+	f.Environments[environment] = active
+	return f.write(map[string]any{"environments": f.Environments})
+}
+
+// environmentNames lists the environments in a stable order.
+func environmentNames(environments map[string]Environment) []string {
+	return (&Config{Environments: environments}).EnvironmentNames()
 }
 
 // fileWarnings checks a used config file for loose permissions and the risk of committing it.

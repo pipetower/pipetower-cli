@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -28,22 +29,98 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestLoadPrefersEnvironment(t *testing.T) {
+// twoEnvironments is a file with a local and a production environment, prod active, local limited to Ops.
+const twoEnvironments = `{
+  "environment": "prod",
+  "environments": {
+    "local": {"url": "http://pipetower.localhost/", "token": "local-token", "team": "Ops"},
+    "prod": {"url": "https://app.pipetower.com", "token": "prod-token"}
+  }
+}`
+
+func TestTheActiveEnvironmentOfTheFileIsUsed(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, FileName), "PIPETOWER_URL=https://file\nPIPETOWER_TOKEN=file-token\n")
+	path := filepath.Join(root, FileName)
+	writeFile(t, path, twoEnvironments)
+
+	cfg, err := Load(testEnv(t, root, "", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Environment != "prod" || cfg.URL != "https://app.pipetower.com" || cfg.Token != "prod-token" || cfg.Team != "" {
+		t.Errorf("environment %q, url %q, token %q, team %q", cfg.Environment, cfg.URL, cfg.Token, cfg.Team)
+	}
+	if cfg.URLSource.Path != path || cfg.TokenSource.Path != path || cfg.EnvironmentsPath != path || strings.Join(cfg.EnvironmentNames(), ",") != "local,prod" {
+		t.Errorf("sources: url %v, token %v, file %q, names %v", cfg.URLSource, cfg.TokenSource, cfg.EnvironmentsPath, cfg.EnvironmentNames())
+	}
+}
+
+func TestTheEnvironmentVariableAndTheNearestFileChooseTheEnvironment(t *testing.T) {
+	root := t.TempDir()
+	home, project := filepath.Join(root, "home"), filepath.Join(root, "project")
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
+	writeFile(t, filepath.Join(project, FileName), `{"environment": "local"}`)
+
+	inProject, err := Load(testEnv(t, filepath.Join(project, "src"), home, nil))
+	fromEnv, _ := Load(testEnv(t, project, home, map[string]string{EnvName: "prod"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inProject.Environment != "local" || inProject.EnvironmentSource.Path != filepath.Join(project, FileName) || inProject.Token != "local-token" || inProject.Team != "Ops" {
+		t.Errorf("in the project: %q from %v, token %q, team %q", inProject.Environment, inProject.EnvironmentSource, inProject.Token, inProject.Team)
+	}
+	if fromEnv.Environment != "prod" || fromEnv.EnvironmentSource.Env != EnvName || fromEnv.Token != "prod-token" {
+		t.Errorf("from $PIPETOWER_ENV: %q from %v, token %q", fromEnv.Environment, fromEnv.EnvironmentSource, fromEnv.Token)
+	}
+	if len(inProject.Warnings) != 0 {
+		t.Errorf("a file which only names the environment is no reason to warn: %v", inProject.Warnings)
+	}
+}
+
+func TestTheOnlyEnvironmentIsActiveWithoutBeingNamed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, FileName), `{"environments": {"prod": {"url": "https://app", "token": "t"}}}`)
+
+	cfg, err := Load(testEnv(t, root, "", nil))
+
+	if err != nil || cfg.Environment != "prod" || cfg.Token != "t" {
+		t.Errorf("err = %v, environment %q, token %q", err, cfg.Environment, cfg.Token)
+	}
+}
+
+func TestSeveralEnvironmentsNeedAnActiveOne(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, FileName), `{"environments": {"a": {"url": "https://a", "token": "t"}, "b": {"url": "https://b", "token": "t"}}}`)
+
+	_, err := Load(testEnv(t, root, "", nil))
+	_, unknown := Load(testEnv(t, root, "", map[string]string{EnvName: "c"}))
+
+	var none *NoEnvironmentError
+	var unknownErr *UnknownEnvironmentError
+	if !errors.As(err, &none) || strings.Join(none.Names, ",") != "a,b" {
+		t.Errorf("err = %v", err)
+	}
+	if !errors.As(unknown, &unknownErr) || unknownErr.Name != "c" || unknownErr.Source.Env != EnvName {
+		t.Errorf("err = %v", unknown)
+	}
+}
+
+func TestLoadPrefersTheProcessEnvironment(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, FileName), twoEnvironments)
 
 	cfg, err := Load(testEnv(t, root, "", map[string]string{EnvToken: "env-token", EnvURL: "https://env"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Token != "env-token" || cfg.TokenSource.Env != EnvToken || cfg.URL != "https://env" {
-		t.Errorf("token = %q from %v, url = %q", cfg.Token, cfg.TokenSource, cfg.URL)
+	if cfg.Token != "env-token" || cfg.TokenSource.Env != EnvToken || cfg.URL != "https://env" || cfg.Environment != "" {
+		t.Errorf("token = %q from %v, url = %q, environment %q", cfg.Token, cfg.TokenSource, cfg.URL, cfg.Environment)
 	}
 }
 
-func TestTokenFromEnvironmentNeverGoesToTheURLOfAFile(t *testing.T) {
+func TestTokenFromTheProcessEnvironmentNeverGoesToTheURLOfAFile(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, filepath.Join(root, FileName), "PIPETOWER_URL=https://attacker.example\n")
+	writeFile(t, filepath.Join(root, FileName), `{"environments": {"x": {"url": "https://attacker.example"}}}`)
 
 	cfg, err := Load(testEnv(t, root, "", map[string]string{EnvToken: "env-token"}))
 
@@ -53,36 +130,26 @@ func TestTokenFromEnvironmentNeverGoesToTheURLOfAFile(t *testing.T) {
 	}
 }
 
-func TestFileWithoutTokenCannotRedirectTheTokenOfAnotherFile(t *testing.T) {
+func TestAProjectFileCannotRedirectTheTokenOfHome(t *testing.T) {
 	root := t.TempDir()
-	project := filepath.Join(root, "cloned-repo")
-	nested := filepath.Join(project, "a", "b")
-	home := filepath.Join(root, "home")
-	writeFile(t, filepath.Join(project, FileName), "PIPETOWER_URL=https://attacker.example\n")
-	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://prod\nPIPETOWER_TOKEN='12|abc'\n")
-	if err := os.MkdirAll(nested, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	project, home := filepath.Join(root, "cloned-repo"), filepath.Join(root, "home")
+	writeFile(t, filepath.Join(project, FileName), `{"environment": "prod", "environments": {"prod": {"url": "https://attacker.example"}}}`)
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
 
-	cfg, err := Load(testEnv(t, nested, home, nil))
-	if err != nil {
-		t.Fatal(err)
-	}
-	homeFile := filepath.Join(home, FileName)
-	if cfg.URL != "https://prod" || cfg.URLSource.Path != homeFile || cfg.TokenSource.Path != homeFile {
-		t.Errorf("url = %q from %v, token from %v", cfg.URL, cfg.URLSource, cfg.TokenSource)
-	}
-	if len(cfg.Warnings) == 0 || !strings.Contains(cfg.Warnings[0], "Ignored the PIPETOWER_URL in "+filepath.Join(project, FileName)) {
-		t.Errorf("the ignored URL must be announced: %v", cfg.Warnings)
+	_, err := Load(testEnv(t, filepath.Join(project, "a", "b"), home, nil))
+
+	// the nearest file with environments wins, but its environment has no token: nothing of home is used
+	var missing *MissingError
+	if !errors.As(err, &missing) || missing.Key != EnvToken || missing.Environment != "prod" {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestNearestFileWithTokenWins(t *testing.T) {
+func TestNearestFileWithEnvironmentsWinsAndIsAnnounced(t *testing.T) {
 	root := t.TempDir()
-	project := filepath.Join(root, "project")
-	home := filepath.Join(root, "home")
-	writeFile(t, filepath.Join(project, FileName), "# local instance\nexport PIPETOWER_URL=\"http://pipetower.localhost/\"\nPIPETOWER_TOKEN=local\n")
-	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://prod\nPIPETOWER_TOKEN=prod\n")
+	project, home := filepath.Join(root, "project"), filepath.Join(root, "home")
+	writeFile(t, filepath.Join(project, FileName), `{"environments": {"local": {"url": "http://pipetower.localhost", "token": "local"}}}`)
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
 
 	cfg, err := Load(testEnv(t, project, home, nil))
 	if err != nil {
@@ -93,6 +160,81 @@ func TestNearestFileWithTokenWins(t *testing.T) {
 	}
 	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "instead of ~/.pipetower") {
 		t.Errorf("a project file shadowing ~/.pipetower must be announced: %v", cfg.Warnings)
+	}
+}
+
+func TestTheTeamComesFromTheVariableTheNearestFileOrTheEnvironment(t *testing.T) {
+	root := t.TempDir()
+	home, project := filepath.Join(root, "home"), filepath.Join(root, "project")
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
+	writeFile(t, filepath.Join(project, FileName), `{"environment": "local", "team": "Shop"}`)
+
+	fromProject, _ := Load(testEnv(t, project, home, nil))
+	fromEnvironment, _ := Load(testEnv(t, root, home, map[string]string{EnvName: "local"}))
+	none, _ := Load(testEnv(t, root, home, nil))
+	fromVariable, _ := Load(testEnv(t, project, home, map[string]string{EnvTeam: "Sales"}))
+
+	if fromProject.Team != "Shop" || fromProject.TeamSource.Path != filepath.Join(project, FileName) {
+		t.Errorf("project: team %q from %v", fromProject.Team, fromProject.TeamSource)
+	}
+	if fromEnvironment.Team != "Ops" || fromEnvironment.TeamSource.Path != filepath.Join(home, FileName) {
+		t.Errorf("environment: team %q from %v", fromEnvironment.Team, fromEnvironment.TeamSource)
+	}
+	if none.Team != "" || none.TeamSource != (Source{}) {
+		t.Errorf("prod has no team: %q from %v", none.Team, none.TeamSource)
+	}
+	if fromVariable.Team != "Sales" || fromVariable.TeamSource.Env != EnvTeam {
+		t.Errorf("variable: team %q from %v", fromVariable.Team, fromVariable.TeamSource)
+	}
+}
+
+func TestSetEnvironmentAndSetTeamRewriteTheFileAndKeepTheRest(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, FileName)
+	writeFile(t, path, `{"environment": "prod", "custom": {"keep": true}, "environments": {"local": {"url": "http://pipetower.localhost", "token": "l"}, "prod": {"url": "https://app", "token": "p", "team": "Ops"}}}`)
+
+	if err := SetEnvironment(path, "local"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTeam(path, "local", "Shop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetTeam(path, "prod", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(testEnv(t, root, "", nil))
+	if err != nil || cfg.Environment != "local" || cfg.Team != "Shop" || cfg.Environments["prod"].Team != "" {
+		t.Errorf("err = %v, environment %q, team %q, prod team %q", err, cfg.Environment, cfg.Team, cfg.Environments["prod"].Team)
+	}
+	content, _ := os.ReadFile(path)
+	var raw map[string]any
+	if json.Unmarshal(content, &raw) != nil || raw["custom"] == nil || strings.Contains(string(content), `"team": ""`) {
+		t.Errorf("other keys must be kept and empty teams left out:\n%s", content)
+	}
+	if info, _ := os.Stat(path); info.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v", info.Mode().Perm())
+	}
+
+	var unknown *UnknownEnvironmentError
+	if err := SetEnvironment(path, "staging"); !errors.As(err, &unknown) {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestABrokenFileIsReportedAndSkippedAndADirectoryIsIgnored(t *testing.T) {
+	root := t.TempDir()
+	project, nested, home := filepath.Join(root, "project"), filepath.Join(root, "project", "nested"), filepath.Join(root, "home")
+	writeFile(t, filepath.Join(project, FileName), `{"environment": "prod",`)
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
+	if err := os.MkdirAll(filepath.Join(nested, FileName), 0o755); err != nil { // a directory of that name, like a temp folder
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(testEnv(t, nested, home, nil))
+
+	if err != nil || cfg.Token != "prod-token" || len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], "not valid JSON") {
+		t.Errorf("err = %v, token %q, warnings %v", err, cfg.Token, cfg.Warnings)
 	}
 }
 
@@ -142,8 +284,8 @@ func TestLoadReportsMissingToken(t *testing.T) {
 	if !errors.As(err, &missing) || missing.Key != EnvToken {
 		t.Fatalf("err = %v", err)
 	}
-	if !strings.Contains(missing.Problem().Hints[0].Value, "https://x/account") {
-		t.Errorf("hint = %v", missing.Problem().Hints[0])
+	if !strings.Contains(missing.Problem().Hints[0].Value, "https://x/account") || !strings.Contains(missing.Problem().Hints[1].Value, `"environments"`) {
+		t.Errorf("hints = %v", missing.Problem().Hints)
 	}
 }
 
@@ -159,7 +301,7 @@ func TestLoadRejectsURLWithoutScheme(t *testing.T) {
 func TestLoadWarnsAboutLooseFiles(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, FileName)
-	writeFile(t, path, "PIPETOWER_URL=https://x\nPIPETOWER_TOKEN=t\n")
+	writeFile(t, path, twoEnvironments)
 	if err := os.Chmod(path, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -175,25 +317,6 @@ func TestLoadWarnsAboutLooseFiles(t *testing.T) {
 	}
 }
 
-func TestParseLine(t *testing.T) {
-	cases := map[string][2]string{
-		"KEY=value":          {"KEY", "value"},
-		"  KEY = 'a b'  ":    {"KEY", "a b"},
-		"export KEY=\"x=y\"": {"KEY", "x=y"},
-	}
-	for line, want := range cases {
-		key, value, ok := parseLine(line)
-		if !ok || key != want[0] || value != want[1] {
-			t.Errorf("parseLine(%q) = %q, %q, %v", line, key, value, ok)
-		}
-	}
-	for _, line := range []string{"", "# comment", "no equals"} {
-		if _, _, ok := parseLine(line); ok {
-			t.Errorf("parseLine(%q) should be skipped", line)
-		}
-	}
-}
-
 func TestGatewayURLMustBeEncryptedUnlessLocal(t *testing.T) {
 	cases := map[string]bool{
 		"wss://app.pipetower.com/gateway":  true,
@@ -206,53 +329,5 @@ func TestGatewayURLMustBeEncryptedUnlessLocal(t *testing.T) {
 		if err := ValidateGatewayURL(url); (err == nil) != valid {
 			t.Errorf("%s: err = %v", url, err)
 		}
-	}
-}
-
-func TestProjectFileWithOnlyATeamUsesTheTokenOfHome(t *testing.T) {
-	root := t.TempDir()
-	home, project := filepath.Join(root, "home"), filepath.Join(root, "code", "project-1")
-	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=home-token\n")
-	writeFile(t, filepath.Join(project, FileName), "PIPETOWER_TEAM=Ops\n")
-
-	cfg, err := Load(testEnv(t, filepath.Join(project, "src"), home, nil))
-
-	if err != nil || cfg.Token != "home-token" || cfg.URL != "https://app" {
-		t.Fatalf("err = %v, token = %q, url = %q", err, cfg.Token, cfg.URL)
-	}
-	if cfg.Team != "Ops" || cfg.TeamSource.Path != filepath.Join(project, FileName) {
-		t.Errorf("team = %q from %v", cfg.Team, cfg.TeamSource)
-	}
-	if len(cfg.Warnings) != 0 {
-		t.Errorf("a file with a team only is no reason to warn: %v", cfg.Warnings)
-	}
-}
-
-func TestNearestTeamWinsAndTheEnvironmentOverridesIt(t *testing.T) {
-	root := t.TempDir()
-	home, project := filepath.Join(root, "home"), filepath.Join(root, "project")
-	writeFile(t, filepath.Join(home, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=t\nPIPETOWER_TEAM=Default\n")
-	writeFile(t, filepath.Join(project, FileName), "PIPETOWER_TEAM=Ops\n")
-
-	inProject, _ := Load(testEnv(t, project, home, nil))
-	elsewhere, _ := Load(testEnv(t, root, home, nil))
-	fromEnv, _ := Load(testEnv(t, project, home, map[string]string{EnvTeam: "Shop"}))
-
-	if inProject.Team != "Ops" || elsewhere.Team != "Default" {
-		t.Errorf("in the project %q, elsewhere %q", inProject.Team, elsewhere.Team)
-	}
-	if fromEnv.Team != "Shop" || fromEnv.TeamSource.Env != EnvTeam {
-		t.Errorf("team = %q from %v", fromEnv.Team, fromEnv.TeamSource)
-	}
-}
-
-func TestWithoutTeamNothingIsLimited(t *testing.T) {
-	root := t.TempDir()
-	writeFile(t, filepath.Join(root, FileName), "PIPETOWER_URL=https://app\nPIPETOWER_TOKEN=t\n")
-
-	cfg, err := Load(testEnv(t, root, "", nil))
-
-	if err != nil || cfg.Team != "" || cfg.TeamSource != (Source{}) {
-		t.Errorf("err = %v, team = %q from %v", err, cfg.Team, cfg.TeamSource)
 	}
 }

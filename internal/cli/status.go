@@ -13,6 +13,7 @@ import (
 
 // statusReport is what pt status checks.
 type statusReport struct {
+	Environment string   `json:"environment,omitempty"`
 	Instance    string   `json:"instance"`
 	URLSource   string   `json:"url_source"`
 	TokenSource string   `json:"token_source"`
@@ -70,7 +71,8 @@ func checkStatus(ctx context.Context, a *App) (statusReport, error) {
 	}
 
 	report := statusReport{
-		Instance: cfg.URL, URLSource: cfg.URLSource.String(), TokenSource: cfg.TokenSource.String(),
+		Environment: cfg.Environment,
+		Instance:    cfg.URL, URLSource: cfg.URLSource.String(), TokenSource: cfg.TokenSource.String(),
 		User: account.Name, Email: account.Email, Teams: teamNames(teams),
 	}
 	if teamID, err := a.TeamID(ctx); err != nil {
@@ -110,6 +112,7 @@ func renderStatus(r statusReport) string {
 		"",
 		line("API", ui.Success.Render("● ")+"authenticated"),
 		line("Gateway", gatewayText),
+		environmentLine(r),
 		line("User", ui.Bold.Render(r.User)+ui.Muted.Render("  "+r.Email)),
 		line("Teams", strings.Join(r.Teams, ", ")),
 		teamLine(r),
@@ -120,12 +123,20 @@ func renderStatus(r statusReport) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
+// environmentLine names the active environment, or that URL and token come from the process environment.
+func environmentLine(r statusReport) string {
+	if r.Environment == "" {
+		return line("Environment", ui.Muted.Render("none, URL and token from the process environment"))
+	}
+	return line("Environment", ui.Bold.Render(r.Environment)+ui.Muted.Render("  pt env use <environment> to switch"))
+}
+
 // teamLine tells which team limits the resources, and where it was set.
 func teamLine(r statusReport) string {
 	if r.Team == "" {
 		return line("Limited to", ui.Muted.Render("no team, resources of all your teams"))
 	}
-	return line("Limited to", ui.Bold.Render(r.Team)+ui.Muted.Render("  set in "+r.TeamSource+" · --all-teams for all"))
+	return line("Limited to", ui.Bold.Render(r.Team)+ui.Muted.Render("  set in "+r.TeamSource+" · pt team use --all to lift it"))
 }
 
 // line renders a labeled status line.

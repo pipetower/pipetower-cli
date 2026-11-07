@@ -8,13 +8,19 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/fault"
 )
 
-// MissingError tells that a required key was found nowhere.
+// exampleFile is a minimal .pipetower, shown where one has to be created.
+const exampleFile = `{"environment": "prod", "environments": {"prod": {"url": "https://app.pipetower.com", "token": "<token>"}}}`
+
+// MissingError tells that the token or the URL was found nowhere.
 type MissingError struct {
 	Key         string
 	Searched    []string
 	URL         string
 	Home        string
 	TokenSource Source
+	// Environment and Path name the active environment and its file, when there is one.
+	Environment string
+	Path        string
 }
 
 // Error implements error.
@@ -27,19 +33,27 @@ func (e *MissingError) Problem() fault.Problem {
 	if e.Key == EnvURL {
 		return fault.Problem{
 			Title: "No Pipetower instance configured",
-			Detail: fmt.Sprintf("The API token is taken from %s, but there is no %s next to it.\n"+
-				"The URL must come from the same place as the token, so that no other file can redirect it.", e.TokenSource, EnvURL),
+			Detail: fmt.Sprintf("The API token is taken from %s, but there is no URL next to it.\n"+
+				"The URL must come from the same place as the token, so that no other file can redirect it.", e.TokenSource),
 			Hints: []fault.Hint{e.addURLHint()},
 			Code:  fault.ExitConfig,
+		}
+	}
+	if e.Environment != "" {
+		return fault.Problem{
+			Title:  fmt.Sprintf("The environment %q has no token", e.Environment),
+			Detail: "Add the API token of its instance to the environment in " + e.Path + ".",
+			Hints:  []fault.Hint{{Label: "Create a token", Value: e.accountURL() + "  →  API tokens"}},
+			Code:   fault.ExitConfig,
 		}
 	}
 
 	return fault.Problem{
 		Title:  "No API token found",
-		Detail: "pt authenticates with an API token from a .pipetower file.\n\n" + e.searchedText(),
+		Detail: "pt authenticates with an API token from a .pipetower file (JSON) with one or more environments.\n\n" + e.searchedText(),
 		Hints: []fault.Hint{
 			{Label: "Create a token", Value: e.accountURL() + "  →  API tokens"},
-			{Label: "Save it", Value: fmt.Sprintf("printf '%s=<token>\\n' >> ~/%s", EnvToken, FileName)},
+			{Label: "Save it", Value: fmt.Sprintf("echo '%s' > ~/%s", exampleFile, FileName)},
 			{Label: "Protect it", Value: "chmod 600 ~/" + FileName},
 		},
 		Code: fault.ExitConfig,
@@ -51,7 +65,7 @@ func (e *MissingError) addURLHint() fault.Hint {
 	if e.TokenSource.Path == "" {
 		return fault.Hint{Label: "Set the URL", Value: "export " + EnvURL + "=https://app.pipetower.com"}
 	}
-	return fault.Hint{Label: "Add the URL", Value: fmt.Sprintf("printf '%s=https://app.pipetower.com\\n' >> %s", EnvURL, e.TokenSource.Path)}
+	return fault.Hint{Label: "Add the URL", Value: fmt.Sprintf(`"url": "https://app.pipetower.com" to the environment %q in %s`, e.Environment, e.TokenSource.Path)}
 }
 
 // searchedText lists the places which were checked.
@@ -74,6 +88,54 @@ func (e *MissingError) accountURL() string {
 	return e.URL + "/account"
 }
 
+// NoEnvironmentError tells that none of several environments is active.
+type NoEnvironmentError struct {
+	Names []string
+	Path  string
+}
+
+// Error implements error.
+func (e *NoEnvironmentError) Error() string {
+	return "no active environment"
+}
+
+// Problem implements fault.Explainer.
+func (e *NoEnvironmentError) Problem() fault.Problem {
+	return fault.Problem{
+		Title:  "Which environment?",
+		Detail: fmt.Sprintf("%s has the environments %s, none is active.", e.Path, strings.Join(e.Names, ", ")),
+		Hints:  []fault.Hint{{Label: "Activate one", Value: "pt env use <environment>"}},
+		Code:   fault.ExitConfig,
+	}
+}
+
+// UnknownEnvironmentError tells that the named environment is not configured.
+type UnknownEnvironmentError struct {
+	Name   string
+	Source Source
+	Names  []string
+	Path   string
+}
+
+// Error implements error.
+func (e *UnknownEnvironmentError) Error() string {
+	return "unknown environment " + e.Name
+}
+
+// Problem implements fault.Explainer.
+func (e *UnknownEnvironmentError) Problem() fault.Problem {
+	detail := fmt.Sprintf("%s has the environments: %s.", e.Path, strings.Join(e.Names, ", "))
+	if e.Source != (Source{}) {
+		detail = fmt.Sprintf("Set in %s. ", e.Source) + detail
+	}
+	return fault.Problem{
+		Title:  fmt.Sprintf("Unknown environment “%s”", e.Name),
+		Detail: detail,
+		Hints:  []fault.Hint{{Label: "See them", Value: "pt env list"}},
+		Code:   fault.ExitConfig,
+	}
+}
+
 // InvalidURLError tells that the configured URL is not an http(s) URL.
 type InvalidURLError struct {
 	URL    string
@@ -91,7 +153,7 @@ func (e *InvalidURLError) Problem() fault.Problem {
 	return fault.Problem{
 		Title:  "Invalid Pipetower URL",
 		Detail: fmt.Sprintf("%q (from %s) %s", e.URL, e.Source, e.Reason),
-		Hints:  []fault.Hint{{Label: "Example", Value: EnvURL + "=https://app.pipetower.com"}},
+		Hints:  []fault.Hint{{Label: "Example", Value: `"url": "https://app.pipetower.com"`}},
 		Code:   fault.ExitConfig,
 	}
 }

@@ -141,7 +141,8 @@ func (a *App) Resolver(ctx context.Context) (*resolve.Resolver, error) {
 }
 
 // TeamID resolves the team which limits the resources once: --team, or else the team of the
-// configuration ($PIPETOWER_TEAM or a .pipetower), none with --all-teams. It is empty without a team.
+// configuration ($PIPETOWER_TEAM, a .pipetower or the active environment), none with --all-teams.
+// It is empty without a team.
 func (a *App) TeamID(ctx context.Context) (string, error) {
 	if a.resolved {
 		return a.team.ID, nil
