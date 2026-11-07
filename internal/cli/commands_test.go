@@ -18,6 +18,7 @@ import (
 
 	"github.com/pipetower/pipetower-cli/internal/config"
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 	"github.com/pipetower/pipetower-cli/internal/ui"
 )
 
@@ -84,6 +85,13 @@ func writeConfig(t *testing.T, dir, content string) string {
 // run executes the command tree like main does, with plain non-interactive streams.
 func run(t *testing.T, dir string, args ...string) result {
 	t.Helper()
+	return runWith(t, dir, nil, args...)
+}
+
+// runWith executes the command tree with the given prompter answering in a terminal, or without
+// one like a script.
+func runWith(t *testing.T, dir string, prompter prompt.Prompter, args ...string) result {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := config.Env{
 		Getenv:     func(string) string { return "" },
@@ -95,11 +103,12 @@ func run(t *testing.T, dir string, args ...string) result {
 		plain := func(w *bytes.Buffer) *colorprofile.Writer {
 			return &colorprofile.Writer{Forward: w, Profile: colorprofile.NoTTY}
 		}
-		return &ui.IO{Out: plain(&stdout), Err: plain(&stderr), RawOut: &stdout, Profile: colorprofile.NoTTY}
+		return &ui.IO{Out: plain(&stdout), Err: plain(&stderr), RawOut: &stdout, Profile: colorprofile.NoTTY, Terminal: prompter != nil, CanPrompt: prompter != nil}
 	}
 
 	opened := ""
 	app := NewAppWith(env, newIO)
+	app.prompter = prompter
 	app.openURL = func(url string) error {
 		opened = url
 		return nil

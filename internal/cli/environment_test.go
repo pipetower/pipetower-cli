@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/pipetower/pipetower-cli/internal/fault"
+	"github.com/pipetower/pipetower-cli/internal/prompt"
 )
 
 // twoEnvironments writes a .pipetower with "local" (the fake API, team Ops) and "prod", prod active,
@@ -119,5 +120,57 @@ func TestEnvironmentsAreCompleted(t *testing.T) {
 
 	if !strings.Contains(out.stdout, "local\t") || !strings.Contains(out.stdout, "prod\thttps://app.pipetower.com") {
 		t.Errorf("stdout:\n%s", out.stdout)
+	}
+}
+
+// picker is a prompter which picks the option at the index and records the options offered.
+type picker struct {
+	index   int
+	offered []string
+}
+
+func (p *picker) Pick(_ string, options []prompt.Option) (int, error) {
+	for _, option := range options {
+		p.offered = append(p.offered, strings.TrimSpace(option.Mark+" "+option.Columns[0]))
+	}
+	return p.index, nil
+}
+func (p *picker) PickMany(string, []prompt.Option) ([]int, error) { return nil, nil }
+func (p *picker) Input(string) (string, error)                    { return "", nil }
+func (p *picker) Confirm(string, string, string) (bool, error)    { return true, nil }
+
+func TestTeamUseOffersAllTeamsAndTheTeamsToPick(t *testing.T) {
+	dir, path := twoEnvironments(t, fakeAPI{
+		"GET /api/v1/teams?limit=100": `{"data":[{"id":"t1","name":"Ops","members":[{}]},{"id":"t2","name":"Shop","members":[]}],"meta":{"has_more":false}}`,
+	})
+	run(t, dir, "env", "use", "local")
+
+	all := &picker{index: 0}
+	out := runWith(t, dir, all, "team", "use")
+	shop := &picker{index: 2}
+	picked := runWith(t, dir, shop, "team", "use")
+
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "Not limited to a team") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", out.code, out.stdout, out.stderr)
+	}
+	if strings.Join(all.offered, "|") != "All teams|● Ops|Shop" {
+		t.Errorf("offered = %q", all.offered)
+	}
+	if picked.code != fault.ExitOK || !strings.Contains(picked.stdout, "Limited to Shop") || strings.Join(shop.offered, "|") != "● All teams|Ops|Shop" {
+		t.Errorf("exit %d, offered %q\nstdout:\n%s\nstderr:\n%s", picked.code, shop.offered, picked.stdout, picked.stderr)
+	}
+	if content, _ := os.ReadFile(path); !strings.Contains(string(content), `"team": "Shop"`) {
+		t.Errorf("the file must hold Shop:\n%s", content)
+	}
+}
+
+func TestEnvUseOffersTheEnvironmentsToPick(t *testing.T) {
+	dir, _ := twoEnvironments(t, fakeAPI{})
+
+	p := &picker{index: 0}
+	out := runWith(t, dir, p, "env", "use")
+
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, "Using local") || strings.Join(p.offered, "|") != "local|● prod" {
+		t.Errorf("exit %d, offered %q\nstdout:\n%s\nstderr:\n%s", out.code, p.offered, out.stdout, out.stderr)
 	}
 }

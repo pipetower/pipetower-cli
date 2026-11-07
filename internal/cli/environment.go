@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/pipetower/pipetower-cli/internal/api"
 	"github.com/pipetower/pipetower-cli/internal/config"
 	"github.com/pipetower/pipetower-cli/internal/fault"
 	"github.com/pipetower/pipetower-cli/internal/prompt"
@@ -138,24 +139,15 @@ func newTeamUseCommand(a *App) *cobra.Command {
 				return fault.New(fault.Problem{Title: "No environment to limit", Detail: "URL and token come from $" + config.EnvToken + ", use $" + config.EnvTeam + " to limit the team.", Code: fault.ExitConfig})
 			}
 
-			team := ""
-			if !all {
-				client, err := a.Client()
-				if err != nil {
-					return err
-				}
-				// any of the user's teams, not only the one currently set; without a name the user picks one
-				found, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(cmd.Context(), optionalArg(argv))
-				if err != nil {
-					return err
-				}
-				team = found.Name
+			team, err := pickTeam(cmd.Context(), a, cfg, optionalArg(argv), all)
+			if err != nil {
+				return err
 			}
 			if err := config.SetTeam(cfg.EnvironmentsPath, cfg.Environment, team); err != nil {
 				return err
 			}
 
-			if all {
+			if team == "" {
 				a.IO.Println(" " + ui.Success.Render("✓") + " Not limited to a team in " + ui.Bold.Render(cfg.Environment) + ui.Muted.Render(", resources of all your teams"))
 			} else {
 				a.IO.Println(" " + ui.Success.Render("✓") + " Limited to " + ui.Bold.Render(team) + ui.Muted.Render(" in "+cfg.Environment))
@@ -168,6 +160,42 @@ func newTeamUseCommand(a *App) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "lift the limit: resources of all your teams")
 	return cmd
+}
+
+// pickTeam returns the team to limit the commands to, "" for all teams: the given one (any of the
+// user's teams, not only the one currently set), or the user's choice among them and "all teams".
+func pickTeam(ctx context.Context, a *App, cfg *config.Config, name string, all bool) (string, error) {
+	if all {
+		return "", nil
+	}
+	client, err := a.Client()
+	if err != nil {
+		return "", err
+	}
+	if name != "" {
+		found, err := (&resolve.Resolver{Client: client, Prompter: a.Prompter()}).Team(ctx, name)
+		return found.Name, err
+	}
+
+	teams, err := api.ListAll[api.Team](ctx, client, api.Teams, api.ListOptions{}, 100)
+	if err != nil {
+		return "", err
+	}
+	mark := func(current bool) string {
+		if current {
+			return "●"
+		}
+		return " "
+	}
+	options := []prompt.Option{{Mark: mark(cfg.Team == ""), Columns: []string{"All teams", "no limit"}}}
+	for _, team := range teams {
+		options = append(options, prompt.Option{Mark: mark(cfg.Team == team.Name || cfg.Team == team.ID), Columns: []string{team.Name, ui.Plural(len(team.Members), "member")}})
+	}
+	index, err := a.Prompter().Pick("Limit the commands to which team?", options)
+	if err != nil || index == 0 {
+		return "", err
+	}
+	return teams[index-1].Name, nil
 }
 
 // environments loads the configuration for the environment commands: the environments are needed,
