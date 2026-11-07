@@ -9,7 +9,7 @@ import (
 )
 
 func TestInputRequiresAValue(t *testing.T) {
-	i := newInput("Value of BRANCH?")
+	i := newInput("Value of BRANCH?", false)
 
 	i.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if i.answered() || !i.empty {
@@ -26,7 +26,7 @@ func TestInputRequiresAValue(t *testing.T) {
 }
 
 func TestInputCanBeCanceled(t *testing.T) {
-	i := newInput("Value of BRANCH?")
+	i := newInput("Value of BRANCH?", false)
 
 	i.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	if i.answered() || !i.canceled {
@@ -57,5 +57,19 @@ func TestConfirmTakesTheChosenAnswer(t *testing.T) {
 	confirmed, err := answering("\x1b[B\r").Confirm("Terminate run?", "Yes", "No")
 	if err != nil || confirmed {
 		t.Errorf("confirmed = %v, err = %v, want no", confirmed, err)
+	}
+}
+
+func TestASecretInputHidesWhatIsTypedAndTheAnswer(t *testing.T) {
+	i := newInput("Token:", true)
+	for _, r := range "abc" {
+		i.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+	}
+	typing := i.View().Content
+	i.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	done := i.View().Content
+
+	if strings.Contains(typing, "abc") || strings.Contains(done, "abc") || !strings.Contains(done, "••••••") || i.field.Value() != "abc" {
+		t.Errorf("typing:\n%s\ndone:\n%s\nvalue %q", typing, done, i.field.Value())
 	}
 }

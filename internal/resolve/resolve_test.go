@@ -90,7 +90,8 @@ func (f *fakePrompter) PickMany(title string, options []prompt.Option) ([]int, e
 	index, err := f.Pick(title, options)
 	return []int{index}, err
 }
-func (f *fakePrompter) Input(string) (string, error) { return "", nil }
+func (f *fakePrompter) Input(string) (string, error)  { return "", nil }
+func (f *fakePrompter) Secret(string) (string, error) { return "", nil }
 func (f *fakePrompter) Confirm(string, string, string) (bool, error) {
 	return false, nil
 }

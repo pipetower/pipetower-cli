@@ -30,9 +30,9 @@ func newEnvAddCommand(a *App) *cobra.Command {
 		Use:   "add <name>",
 		Short: "Add an environment: an instance with its URL and your API token",
 		Long: "Add an environment to the configuration file, which is created as ~/.pipetower if there is\n" +
-			"none yet. The first environment becomes the active one. The token is asked for when --token\n" +
-			"is left out in a terminal.",
-		Example: "  " + config.AddHint + "\n  pt env add local --url http://pipetower.localhost --token <token> --team Ops",
+			"none yet. The first environment becomes the active one. The token is asked for, hidden, when\n" +
+			"--token is left out in a terminal.",
+		Example: "  " + config.AddHint + "\n  pt env add local --url http://pipetower.localhost --team Ops",
 		Args:    args("name"),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			if env.URL == "" {
@@ -43,7 +43,7 @@ func newEnvAddCommand(a *App) *cobra.Command {
 				if prompter == nil {
 					return usageProblem(cmd, "Missing --token")
 				}
-				token, err := prompter.Input("API token")
+				token, err := prompter.Secret("Your API token (Account → API tokens):")
 				if err != nil {
 					return err
 				}

@@ -9,5 +9,5 @@
       /.pipetower
 
     Create a token   <your Pipetower URL>/account  →  API tokens
-    Save it          pt env add prod --url https://app.pipetower.com --token <token>
+    Save it          pt env add prod --url https://app.pipetower.com
 

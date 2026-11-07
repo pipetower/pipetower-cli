@@ -16,11 +16,17 @@ type input struct {
 	empty    bool
 	done     bool
 	canceled bool
+	secret   bool
 }
 
-// newInput creates a focused input.
-func newInput(title string) *input {
-	return &input{title: title, field: newField()}
+// newInput creates a focused input, a secret one hides what is typed.
+func newInput(title string, secret bool) *input {
+	i := &input{title: title, field: newField(), secret: secret}
+	if secret {
+		i.field.EchoMode = textinput.EchoPassword
+		i.field.EchoCharacter = '•'
+	}
+	return i
 }
 
 // newField creates the focused text field of the prompts.
@@ -65,6 +71,8 @@ func (i *input) View() tea.View {
 	switch {
 	case i.canceled:
 		return tea.NewView("")
+	case i.done && i.secret:
+		return tea.NewView(ui.Bold.Render(i.title) + " " + ui.Accent.Render("••••••") + "\n")
 	case i.done:
 		return tea.NewView(ui.Bold.Render(i.title) + " " + ui.Accent.Render(i.field.Value()) + "\n")
 	}

@@ -17,6 +17,7 @@ type Prompter interface {
 	Pick(title string, options []Option) (int, error)
 	PickMany(title string, options []Option) ([]int, error)
 	Input(title string) (string, error)
+	Secret(title string) (string, error)
 	Confirm(title, affirmative, negative string) (bool, error)
 }
 
@@ -54,7 +55,17 @@ func (t Terminal) PickMany(title string, options []Option) ([]int, error) {
 
 // Input asks for a non-empty text.
 func (t Terminal) Input(title string) (string, error) {
-	i := newInput(title)
+	return t.input(title, false)
+}
+
+// Secret asks for a non-empty text which is not shown, like a token.
+func (t Terminal) Secret(title string) (string, error) {
+	return t.input(title, true)
+}
+
+// input asks for a non-empty text, shown or hidden.
+func (t Terminal) input(title string, secret bool) (string, error) {
+	i := newInput(title, secret)
 	if err := t.run(i); err != nil {
 		return "", err
 	}

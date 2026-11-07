@@ -128,6 +128,7 @@ func TestEnvironmentsAreCompleted(t *testing.T) {
 type picker struct {
 	index   int
 	offered []string
+	secret  string
 }
 
 func (p *picker) Pick(_ string, options []prompt.Option) (int, error) {
@@ -138,6 +139,7 @@ func (p *picker) Pick(_ string, options []prompt.Option) (int, error) {
 }
 func (p *picker) PickMany(string, []prompt.Option) ([]int, error) { return nil, nil }
 func (p *picker) Input(string) (string, error)                    { return "", nil }
+func (p *picker) Secret(string) (string, error)                   { return p.secret, nil }
 func (p *picker) Confirm(string, string, string) (bool, error)    { return true, nil }
 
 func TestTeamUseOffersAllTeamsAndTheTeamsToPick(t *testing.T) {
@@ -203,5 +205,16 @@ func TestEnvAddCreatesTheFileAndFurtherOnesAreAddedToIt(t *testing.T) {
 	}
 	if noURL.code != fault.ExitUsage || !strings.Contains(noURL.stderr, "Missing --url") || noToken.code != fault.ExitUsage || !strings.Contains(noToken.stderr, "Missing --token") {
 		t.Errorf("no url: exit %d %s\nno token: exit %d %s", noURL.code, noURL.stderr, noToken.code, noToken.stderr)
+	}
+}
+
+func TestEnvAddAsksForTheTokenHiddenInATerminal(t *testing.T) {
+	dir := t.TempDir()
+
+	out := runWith(t, dir, &picker{secret: "secret-token"}, "env", "add", "prod", "--url", "https://app.pipetower.com")
+
+	content, _ := os.ReadFile(filepath.Join(dir, ".pipetower"))
+	if out.code != fault.ExitOK || !strings.Contains(string(content), `"token": "secret-token"`) || strings.Contains(out.stdout, "secret-token") {
+		t.Errorf("exit %d, file:\n%s\nstdout:\n%s\nstderr:\n%s", out.code, content, out.stdout, out.stderr)
 	}
 }

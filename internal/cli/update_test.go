@@ -33,6 +33,7 @@ type answer struct {
 func (a *answer) Pick(string, []prompt.Option) (int, error)       { return 0, nil }
 func (a *answer) PickMany(string, []prompt.Option) ([]int, error) { return nil, nil }
 func (a *answer) Input(string) (string, error)                    { return "", nil }
+func (a *answer) Secret(string) (string, error)                   { return "", nil }
 func (a *answer) Confirm(title, _, _ string) (bool, error) {
 	a.questions = append(a.questions, title)
 	return a.yes, nil

@@ -19,10 +19,12 @@ it offers new versions when it starts, or run `pt update`.
 Create an API token in Pipetower (**Account → API tokens**) and add the instance as environment:
 
 ```sh
-pt env add prod --url https://app.pipetower.com --token <token>
-pt env add local --url http://pipetower.localhost --token <token> --team Ops
+pt env add prod --url https://app.pipetower.com      # asks for the token, hidden
+pt env add local --url http://pipetower.localhost --team Ops
 pt status
 ```
+
+In a script, pass the token with `--token`.
 
 This writes `~/.pipetower`, a JSON file with the environments, readable by you only:
 
