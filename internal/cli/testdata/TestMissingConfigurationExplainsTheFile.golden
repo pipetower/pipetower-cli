@@ -3,7 +3,7 @@
 
     pt authenticates with an API token from a .pipetower file (JSON) with one or more environments.
 
-    Looked in $PIPETOWER_URL / $PIPETOWER_TOKEN and:
+    Looked in $PIPETOWER_URL / $PIPETOWER_TOKEN, $PIPETOWER_CONFIG and:
       ~/.pipetower
       /nonexistent/.pipetower
       /.pipetower

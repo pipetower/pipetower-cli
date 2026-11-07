@@ -359,3 +359,29 @@ func TestAddEnvironmentCreatesTheFileAndActivatesTheFirstOne(t *testing.T) {
 		t.Errorf("mode = %v", info.Mode().Perm())
 	}
 }
+
+func TestTheConfiguredFileComesFirstAndIsWhereAnEnvironmentIsAdded(t *testing.T) {
+	root := t.TempDir()
+	home, project, configured := filepath.Join(root, "home"), filepath.Join(root, "project"), filepath.Join(root, "elsewhere", "config.json")
+	writeFile(t, filepath.Join(home, FileName), twoEnvironments)
+	writeFile(t, filepath.Join(project, FileName), `{"environments": {"project": {"url": "https://project", "token": "p"}}}`)
+	writeFile(t, configured, `{"environments": {"configured": {"url": "https://configured", "token": "c"}}}`)
+	vars := map[string]string{EnvConfig: configured}
+
+	cfg, err := Load(testEnv(t, project, home, vars))
+	if err != nil || cfg.Environment != "configured" || cfg.EnvironmentsPath != configured {
+		t.Errorf("err = %v, environment %q from %q", err, cfg.Environment, cfg.EnvironmentsPath)
+	}
+	if DefaultPath(testEnv(t, project, home, vars)) != configured || DefaultPath(testEnv(t, project, home, nil)) != filepath.Join(home, FileName) {
+		t.Errorf("default path = %q / %q", DefaultPath(testEnv(t, project, home, vars)), DefaultPath(testEnv(t, project, home, nil)))
+	}
+
+	// a directory where the file should be is explained
+	dir := filepath.Join(root, "dir", FileName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AddEnvironment(dir, "x", Environment{URL: "https://x", Token: "t"}); err == nil || !strings.Contains(err.Error(), "is a directory") {
+		t.Errorf("err = %v", err)
+	}
+}

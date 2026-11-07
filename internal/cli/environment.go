@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -94,12 +93,12 @@ func hostOf(rawURL string) string {
 }
 
 // configPath is the file environments are added to: the one which holds the environments in use,
-// or ~/.pipetower when there is none yet.
+// or $PIPETOWER_CONFIG, or ~/.pipetower when there is none yet.
 func (a *App) configPath() string {
 	if cfg, err := a.environments(); err == nil && cfg.EnvironmentsPath != "" {
 		return cfg.EnvironmentsPath
 	}
-	return filepath.Join(a.env.Home, config.FileName)
+	return config.DefaultPath(a.env)
 }
 
 // newEnvListCommand lists the environments of the configuration file with the active one marked.

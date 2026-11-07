@@ -42,8 +42,9 @@ limits all commands to that team while the environment is active: `pt team use O
 `pt team use --all` lifts it, `--team` and `--all-teams` override it for one command.
 
 A project folder can carry a `.pipetower` with only `{"environment": "local", "team": "Ops"}` (put it
-into `.gitignore`), the environments then come from `~/.pipetower`. In CI, `PIPETOWER_URL` and
-`PIPETOWER_TOKEN` replace the file, `PIPETOWER_ENV` and `PIPETOWER_TEAM` choose environment and team.
+into `.gitignore`), the environments then come from `~/.pipetower`. `PIPETOWER_CONFIG` names another
+file to use instead of `~/.pipetower`. In CI, `PIPETOWER_URL` and `PIPETOWER_TOKEN` replace the file,
+`PIPETOWER_ENV` and `PIPETOWER_TEAM` choose environment and team.
 
 ## Usage
 

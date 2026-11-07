@@ -16,6 +16,9 @@
 // that a file of a cloned repository can never redirect a token to another server. $PIPETOWER_TOKEN
 // and $PIPETOWER_URL, which the user sets, replace them (e.g. in CI).
 //
+// $PIPETOWER_CONFIG names a configuration file which is looked at first, e.g. where ~/.pipetower
+// can't be used.
+//
 // Which environment is active comes from $PIPETOWER_ENV, or else from the nearest file which names
 // one: a project's .pipetower may hold only {"environment": "local"} and use the environments of
 // ~/.pipetower. The team which limits all commands comes from $PIPETOWER_TEAM, else from the nearest
@@ -40,11 +43,12 @@ const DefaultURL = "https://app.pipetower.com"
 
 // Names of the configuration file and the environment variables.
 const (
-	FileName = ".pipetower"
-	EnvURL   = "PIPETOWER_URL"
-	EnvToken = "PIPETOWER_TOKEN"
-	EnvTeam  = "PIPETOWER_TEAM"
-	EnvName  = "PIPETOWER_ENV"
+	FileName  = ".pipetower"
+	EnvURL    = "PIPETOWER_URL"
+	EnvToken  = "PIPETOWER_TOKEN"
+	EnvTeam   = "PIPETOWER_TEAM"
+	EnvName   = "PIPETOWER_ENV"
+	EnvConfig = "PIPETOWER_CONFIG"
 )
 
 // Source tells where a value came from: an environment variable or a file path.
@@ -106,7 +110,7 @@ func SystemEnv() Env {
 
 // Load resolves the configuration and validates that URL and token are present and safe.
 func Load(env Env) (*Config, error) {
-	cfg := &Config{Searched: candidateFiles(env.Cwd, env.Home)}
+	cfg := &Config{Searched: candidateFiles(env.Getenv(EnvConfig), env.Cwd, env.Home)}
 	files := cfg.readFiles()
 	cfg.loadEnvironments(files, env)
 
@@ -257,24 +261,35 @@ func isLocalHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// candidateFiles lists the possible config files: from the working directory up to the root, then home.
-func candidateFiles(cwd, home string) []string {
+// candidateFiles lists the possible config files: the one named by $PIPETOWER_CONFIG, then from
+// the working directory up to the root, then home.
+func candidateFiles(configured, cwd, home string) []string {
 	var files []string
 	seen := map[string]bool{}
-	add := func(dir string) {
-		path := filepath.Join(dir, FileName)
-		if dir != "" && !seen[path] {
+	add := func(path string) {
+		if path != "" && !seen[path] {
 			seen[path] = true
 			files = append(files, path)
 		}
 	}
 
+	add(strings.TrimSpace(configured))
 	for dir := cwd; dir != ""; dir = parentDir(dir) {
-		add(dir)
+		add(filepath.Join(dir, FileName))
 	}
-	add(home)
+	if home != "" {
+		add(filepath.Join(home, FileName))
+	}
 
 	return files
+}
+
+// DefaultPath is the file a first environment is written to: $PIPETOWER_CONFIG or ~/.pipetower.
+func DefaultPath(env Env) string {
+	if configured := strings.TrimSpace(env.Getenv(EnvConfig)); configured != "" {
+		return configured
+	}
+	return filepath.Join(env.Home, FileName)
 }
 
 // parentDir returns the parent directory or an empty string at the root.

@@ -69,7 +69,7 @@ func (e *MissingError) addURLHint() fault.Hint {
 
 // searchedText lists the places which were checked.
 func (e *MissingError) searchedText() string {
-	lines := []string{"Looked in $" + EnvURL + " / $" + EnvToken + " and:"}
+	lines := []string{"Looked in $" + EnvURL + " / $" + EnvToken + ", $" + EnvConfig + " and:"}
 	for _, path := range e.Searched {
 		if e.Home != "" && strings.HasPrefix(path, e.Home+string(filepath.Separator)) {
 			path = "~" + strings.TrimPrefix(path, e.Home)

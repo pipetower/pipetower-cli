@@ -222,3 +222,25 @@ func TestEnvAddAsksForTheTokenHiddenInATerminal(t *testing.T) {
 		t.Errorf("exit %d, file:\n%s\nstdout:\n%s\nstderr:\n%s", out.code, content, out.stdout, out.stderr)
 	}
 }
+
+func TestEnvAddWritesTheConfiguredFileWhenHomeIsTaken(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".pipetower"), 0o755); err != nil { // the app keeps its scripts there
+		t.Fatal(err)
+	}
+	configured := filepath.Join(dir, "config", ".pipetower")
+
+	taken := run(t, dir, "env", "add", "--token", "t")
+	out := runEnv(t, dir, map[string]string{"PIPETOWER_CONFIG": configured}, "env", "add", "--token", "t")
+	list := runEnv(t, dir, map[string]string{"PIPETOWER_CONFIG": configured}, "env", "list")
+
+	if taken.code != fault.ExitConfig || !strings.Contains(taken.stderr, "is a directory") || !strings.Contains(taken.stderr, "PIPETOWER_CONFIG") {
+		t.Errorf("exit %d, stderr:\n%s", taken.code, taken.stderr)
+	}
+	if out.code != fault.ExitOK || !strings.Contains(out.stdout, configured) {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", out.code, out.stdout, out.stderr)
+	}
+	if list.code != fault.ExitOK || !strings.Contains(list.stdout, "app.pipetower.com") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", list.code, list.stdout, list.stderr)
+	}
+}

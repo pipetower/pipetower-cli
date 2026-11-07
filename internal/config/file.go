@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+
+	"github.com/pipetower/pipetower-cli/internal/fault"
 )
 
 // file is the content of a .pipetower file: the environments, the active one and the team, all
@@ -81,12 +83,23 @@ func (f *file) write(changes map[string]any) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(f.Path), 0o700); err != nil {
+		return err
+	}
 	return os.WriteFile(f.Path, append(content, '\n'), 0o600)
 }
 
 // AddEnvironment adds an environment to the file, which is created if it doesn't exist. The
 // first environment of a file becomes the active one. An environment of that name must not exist.
 func AddEnvironment(path, name string, env Environment) (activated bool, err error) {
+	if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+		return false, fault.New(fault.Problem{
+			Title:  path + " is a directory, not a file",
+			Detail: "The configuration can't be written there.",
+			Hints:  []fault.Hint{{Label: "Use another file", Value: "export " + EnvConfig + "=<path>"}},
+			Code:   fault.ExitConfig,
+		})
+	}
 	f, err := readFile(path)
 	if os.IsNotExist(err) {
 		f, err = &file{Path: path, raw: map[string]json.RawMessage{}}, nil

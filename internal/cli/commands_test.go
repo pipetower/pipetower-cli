@@ -92,9 +92,21 @@ func run(t *testing.T, dir string, args ...string) result {
 // one like a script.
 func runWith(t *testing.T, dir string, prompter prompt.Prompter, args ...string) result {
 	t.Helper()
+	return runFull(t, dir, prompter, nil, args...)
+}
+
+// runEnv executes the command tree with the given environment variables set.
+func runEnv(t *testing.T, dir string, vars map[string]string, args ...string) result {
+	t.Helper()
+	return runFull(t, dir, nil, vars, args...)
+}
+
+// runFull executes the command tree with a prompter and environment variables.
+func runFull(t *testing.T, dir string, prompter prompt.Prompter, vars map[string]string, args ...string) result {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
 	env := config.Env{
-		Getenv:     func(string) string { return "" },
+		Getenv:     func(name string) string { return vars[name] },
 		Cwd:        dir,
 		Home:       dir,
 		GitIgnored: func(string) (bool, bool) { return false, false },
