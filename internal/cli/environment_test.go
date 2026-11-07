@@ -181,37 +181,41 @@ func TestEnvUseOffersTheEnvironmentsToPick(t *testing.T) {
 func TestEnvAddCreatesTheFileAndFurtherOnesAreAddedToIt(t *testing.T) {
 	dir := t.TempDir()
 
-	first := run(t, dir, "env", "add", "prod", "--url", "https://app.pipetower.com", "--token", "p")
-	second := run(t, dir, "env", "add", "local", "--url", "http://pipetower.localhost", "--token", "l", "--team", "Ops")
+	first := run(t, dir, "env", "add", "--token", "p") // the public instance, named after its host
+	second := run(t, dir, "env", "add", "--url", "http://pipetower.localhost/", "--token", "l", "--team", "Ops")
+	third := run(t, dir, "env", "add", "staging", "--url", "https://staging.example.com", "--token", "s")
 	list := run(t, dir, "env", "list")
-	again := run(t, dir, "env", "add", "prod", "--url", "https://x", "--token", "t")
-	noURL := run(t, dir, "env", "add", "x", "--token", "t")
-	noToken := run(t, dir, "env", "add", "x", "--url", "https://x")
+	again := run(t, dir, "env", "add", "--token", "t")
+	badURL := run(t, dir, "env", "add", "--url", "nonsense", "--token", "t")
+	noToken := run(t, dir, "env", "add")
 
-	if first.code != fault.ExitOK || !strings.Contains(first.stdout, "Added prod") || !strings.Contains(first.stdout, "active") {
+	if first.code != fault.ExitOK || !strings.Contains(first.stdout, "Added app.pipetower.com") || !strings.Contains(first.stdout, "https://app.pipetower.com") || !strings.Contains(first.stdout, "active") {
 		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", first.code, first.stdout, first.stderr)
 	}
-	if second.code != fault.ExitOK || strings.Contains(second.stdout, "active") || !strings.Contains(second.stderr, "pt env use local") {
+	if second.code != fault.ExitOK || !strings.Contains(second.stdout, "Added pipetower.localhost") || strings.Contains(second.stdout, "active") || !strings.Contains(second.stderr, "pt env use pipetower.localhost") {
 		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", second.code, second.stdout, second.stderr)
 	}
-	if content, _ := os.ReadFile(filepath.Join(dir, ".pipetower")); !strings.Contains(string(content), `"environment": "prod"`) || !strings.Contains(string(content), `"team": "Ops"`) {
+	if third.code != fault.ExitOK || !strings.Contains(third.stdout, "Added staging") {
+		t.Errorf("exit %d\nstdout:\n%s\nstderr:\n%s", third.code, third.stdout, third.stderr)
+	}
+	if content, _ := os.ReadFile(filepath.Join(dir, ".pipetower")); !strings.Contains(string(content), `"environment": "app.pipetower.com"`) || !strings.Contains(string(content), `"team": "Ops"`) {
 		t.Errorf("file:\n%s", content)
 	}
-	if list.code != fault.ExitOK || !regexp.MustCompile(`●\s+prod`).MatchString(list.stdout) || !strings.Contains(list.stdout, "Ops") {
+	if list.code != fault.ExitOK || !regexp.MustCompile(`●\s+app.pipetower.com`).MatchString(list.stdout) || !strings.Contains(list.stdout, "Ops") {
 		t.Errorf("exit %d\nstdout:\n%s", list.code, list.stdout)
 	}
-	if again.code != fault.ExitUsage || !strings.Contains(again.stderr, "exists already") {
+	if again.code != fault.ExitUsage || !strings.Contains(again.stderr, "“app.pipetower.com” exists already") {
 		t.Errorf("exit %d, stderr:\n%s", again.code, again.stderr)
 	}
-	if noURL.code != fault.ExitUsage || !strings.Contains(noURL.stderr, "Missing --url") || noToken.code != fault.ExitUsage || !strings.Contains(noToken.stderr, "Missing --token") {
-		t.Errorf("no url: exit %d %s\nno token: exit %d %s", noURL.code, noURL.stderr, noToken.code, noToken.stderr)
+	if badURL.code != fault.ExitUsage && badURL.code != fault.ExitConfig || noToken.code != fault.ExitUsage || !strings.Contains(noToken.stderr, "Missing --token") {
+		t.Errorf("bad url: exit %d %s\nno token: exit %d %s", badURL.code, badURL.stderr, noToken.code, noToken.stderr)
 	}
 }
 
 func TestEnvAddAsksForTheTokenHiddenInATerminal(t *testing.T) {
 	dir := t.TempDir()
 
-	out := runWith(t, dir, &picker{secret: "secret-token"}, "env", "add", "prod", "--url", "https://app.pipetower.com")
+	out := runWith(t, dir, &picker{secret: "secret-token"}, "env", "add")
 
 	content, _ := os.ReadFile(filepath.Join(dir, ".pipetower"))
 	if out.code != fault.ExitOK || !strings.Contains(string(content), `"token": "secret-token"`) || strings.Contains(out.stdout, "secret-token") {

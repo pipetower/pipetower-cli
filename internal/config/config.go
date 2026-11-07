@@ -35,6 +35,9 @@ import (
 	"github.com/pipetower/pipetower-cli/internal/fault"
 )
 
+// DefaultURL is the instance an environment is added for unless another is given.
+const DefaultURL = "https://app.pipetower.com"
+
 // Names of the configuration file and the environment variables.
 const (
 	FileName = ".pipetower"

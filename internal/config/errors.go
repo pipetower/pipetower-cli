@@ -9,7 +9,7 @@ import (
 )
 
 // AddHint is the command which creates the configuration file with a first environment.
-const AddHint = "pt env add prod --url https://app.pipetower.com"
+const AddHint = "pt env add"
 
 // MissingError tells that the token or the URL was found nowhere.
 type MissingError struct {

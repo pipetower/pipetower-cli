@@ -19,26 +19,25 @@ it offers new versions when it starts, or run `pt update`.
 Create an API token in Pipetower (**Account → API tokens**) and add the instance as environment:
 
 ```sh
-pt env add prod --url https://app.pipetower.com      # asks for the token, hidden
-pt env add local --url http://pipetower.localhost --team Ops
+pt env add        # asks for the token, hidden
 pt status
 ```
 
-In a script, pass the token with `--token`.
-
-This writes `~/.pipetower`, a JSON file with the environments, readable by you only:
+This writes `~/.pipetower`, a JSON file with the environment `app.pipetower.com`, readable by you only.
+In a script, pass the token with `--token`. A second instance, e.g. a local one, is another
+environment: `pt env add --url http://pipetower.localhost --team Ops` adds `pipetower.localhost`.
 
 ```json
 {
-  "environment": "prod",
+  "environment": "app.pipetower.com",
   "environments": {
-    "prod":  {"url": "https://app.pipetower.com", "token": "<token>"},
-    "local": {"url": "http://pipetower.localhost", "token": "<token>", "team": "Ops"}
+    "app.pipetower.com":   {"url": "https://app.pipetower.com", "token": "<token>"},
+    "pipetower.localhost": {"url": "http://pipetower.localhost", "token": "<token>", "team": "Ops"}
   }
 }
 ```
 
-`environment` is the active one, `pt env list` shows them and `pt env use local` switches. A `team`
+`environment` is the active one, `pt env list` shows them and `pt env use pipetower.localhost` switches. A `team`
 limits all commands to that team while the environment is active: `pt team use Ops` sets it,
 `pt team use --all` lifts it, `--team` and `--all-teams` override it for one command.
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -27,16 +28,26 @@ func newEnvCommand(a *App) *cobra.Command {
 func newEnvAddCommand(a *App) *cobra.Command {
 	var env config.Environment
 	cmd := &cobra.Command{
-		Use:   "add <name>",
-		Short: "Add an environment: an instance with its URL and your API token",
+		Use:   "add [name]",
+		Short: "Add an environment: an instance with your API token for it",
 		Long: "Add an environment to the configuration file, which is created as ~/.pipetower if there is\n" +
-			"none yet. The first environment becomes the active one. The token is asked for, hidden, when\n" +
-			"--token is left out in a terminal.",
-		Example: "  " + config.AddHint + "\n  pt env add local --url http://pipetower.localhost --team Ops",
-		Args:    args("name"),
+			"none yet, and the first one becomes the active one. Without --url it is " + config.DefaultURL + ",\n" +
+			"without a name it is named after the host of the URL. The token is asked for, hidden, when\n" +
+			"--token is left out in a terminal. One environment is all most users need.",
+		Example: "  " + config.AddHint + "\n  pt env add --url http://pipetower.localhost --team Ops\n  pt env add staging --url https://staging.example.com",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, argv []string) error {
+			if len(argv) > 1 {
+				return usageProblem(cmd, "Too many arguments: "+strings.Join(argv[1:], " "))
+			}
 			if env.URL == "" {
-				return usageProblem(cmd, "Missing --url")
+				env.URL = config.DefaultURL
+			}
+			name := optionalArg(argv)
+			if name == "" {
+				if name = hostOf(env.URL); name == "" {
+					return usageProblem(cmd, "Invalid --url "+env.URL)
+				}
 			}
 			if env.Token == "" {
 				prompter := a.Prompter()
@@ -51,7 +62,7 @@ func newEnvAddCommand(a *App) *cobra.Command {
 			}
 
 			path := a.configPath()
-			activated, err := config.AddEnvironment(path, argv[0], env)
+			activated, err := config.AddEnvironment(path, name, env)
 			if err != nil {
 				return err
 			}
@@ -60,17 +71,26 @@ func newEnvAddCommand(a *App) *cobra.Command {
 			if activated {
 				state = ", active"
 			}
-			a.IO.Println(" " + ui.Success.Render("✓") + " Added " + ui.Bold.Render(argv[0]) + ui.Muted.Render("  "+env.URL+" · team "+ui.Or(env.Team, "all")+" · in "+path+state))
+			a.IO.Println(" " + ui.Success.Render("✓") + " Added " + ui.Bold.Render(name) + ui.Muted.Render("  "+env.URL+" · team "+ui.Or(env.Team, "all")+" · in "+path+state))
 			if !activated {
-				a.IO.Errorln(ui.Faint.Render(" Switch to it with pt env use " + argv[0]))
+				a.IO.Errorln(ui.Faint.Render(" Switch to it with pt env use " + name))
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&env.URL, "url", "", "the URL of the Pipetower instance")
+	cmd.Flags().StringVar(&env.URL, "url", "", "the URL of the Pipetower instance ("+config.DefaultURL+")")
 	cmd.Flags().StringVar(&env.Token, "token", "", "your API token for the instance (Account → API tokens)")
 	cmd.Flags().StringVar(&env.Team, "team", "", "limit all commands to this team while the environment is active")
 	return cmd
+}
+
+// hostOf is the host of a URL, the default name of an environment ("app.pipetower.com").
+func hostOf(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	return parsed.Hostname()
 }
 
 // configPath is the file environments are added to: the one which holds the environments in use,
