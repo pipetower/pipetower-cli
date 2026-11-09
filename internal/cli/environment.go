@@ -33,7 +33,7 @@ func newEnvAddCommand(a *App) *cobra.Command {
 			"none yet, and the first one becomes the active one. Without --url it is " + config.DefaultURL + ",\n" +
 			"without a name it is named after the host of the URL. The token is asked for, hidden, when\n" +
 			"--token is left out in a terminal. One environment is all most users need.",
-		Example: "  " + config.AddHint + "\n  pt env add --url http://pipetower.localhost --team Ops\n  pt env add staging --url https://staging.example.com",
+		Example: "  " + config.AddHint + "\n  pt env add staging --url https://staging.example.com",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			if len(argv) > 1 {
