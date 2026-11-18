@@ -38,6 +38,18 @@ func TestMissingVariablesWithoutPrompt(t *testing.T) {
 	}
 }
 
+func TestOptionalVariablesAreNotMissing(t *testing.T) {
+	a := NewApp()
+	a.IO.CanPrompt = false
+	definitions := []api.VariableDefinition{{Name: "branch", Type: api.VariableText}, {Name: "commit", Type: api.VariableText, Optional: true}}
+
+	values, err := collectVariables(a, definitions, []string{"branch=main"})
+
+	if err != nil || len(values) != 1 || values["branch"] != "main" {
+		t.Errorf("values = %v, err = %v", values, err)
+	}
+}
+
 func TestRawEndpoint(t *testing.T) {
 	e := rawEndpoint("POST", "/api/v1/runs?status=running", `{"a":1}`)
 

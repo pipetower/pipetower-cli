@@ -26,6 +26,7 @@ const followHelp = "Press f to switch between the step tree and the full output,
 type runFlags struct {
 	servers []string
 	vars    []string
+	meta    metadataFlags
 	detach  bool
 	follow  followFlags
 }
@@ -40,6 +41,7 @@ type followFlags struct {
 func addRunFlags(cmd *cobra.Command, flags *runFlags) {
 	cmd.Flags().StringArrayVarP(&flags.servers, "server", "s", nil, "server to run on: name, id or tag:<tag> (repeatable)")
 	cmd.Flags().StringArrayVarP(&flags.vars, "var", "v", nil, "variable as name=value (repeatable)")
+	addMetadataFlags(cmd, &flags.meta)
 	cmd.Flags().BoolVarP(&flags.detach, "detach", "d", false, "start the run and return immediately")
 	addFollowFlags(cmd, &flags.follow)
 }
@@ -56,7 +58,15 @@ func startRun(ctx context.Context, a *App, runnable resolve.Runnable, flags runF
 	if err != nil {
 		return err
 	}
-	variables, err := collectVariables(a, runnable.Variables(), flags.vars)
+	delivery, err := gitDelivery(ctx, a, runnable, servers, flags)
+	if err != nil {
+		return err
+	}
+	variables, err := collectVariables(a, runnable.Variables(), delivery.variables(runnable, flags.vars))
+	if err != nil {
+		return err
+	}
+	metadata, err := collectMetadata(flags.meta, delivery.metadata())
 	if err != nil {
 		return err
 	}
@@ -67,7 +77,7 @@ func startRun(ctx context.Context, a *App, runnable resolve.Runnable, flags runF
 	}
 	// the start is not canceled halfway: once sent, the run may exist, so its id must be shown
 	run, err := ui.Spin(a.IO, "Starting "+runnable.Name()+"…", func() (api.Run, error) {
-		return client.StartRun(context.WithoutCancel(ctx), runnable.Request(serverIDs(servers), variables))
+		return client.StartRun(context.WithoutCancel(ctx), runnable.Request(serverIDs(servers), variables, metadata))
 	})
 	if err != nil {
 		return err
@@ -168,7 +178,8 @@ func serversToRunOn(ctx context.Context, a *App, runnable resolve.Runnable, flag
 	return resolver.PickServers(ctx, runnable)
 }
 
-// collectVariables combines --var flags with answers for the missing variables.
+// collectVariables combines --var flags with answers for the missing variables. An optional
+// variable is not asked for, without a value it is empty.
 func collectVariables(a *App, definitions []api.VariableDefinition, flags []string) (map[string]string, error) {
 	values, err := parseVariables(definitions, flags)
 	if err != nil {
@@ -177,7 +188,7 @@ func collectVariables(a *App, definitions []api.VariableDefinition, flags []stri
 
 	var missing []api.VariableDefinition
 	for _, definition := range definitions {
-		if values[definition.Name] == "" {
+		if values[definition.Name] == "" && !definition.Optional {
 			missing = append(missing, definition)
 		}
 	}

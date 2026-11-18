@@ -90,8 +90,8 @@ func (r Runnable) SoleServer() (api.Server, bool) {
 }
 
 // Request creates the request which starts the runnable.
-func (r Runnable) Request(serverIDs []string, variables map[string]string) api.RunRequest {
-	req := api.RunRequest{ServerIDs: serverIDs, Variables: variables}
+func (r Runnable) Request(serverIDs []string, variables, metadata map[string]string) api.RunRequest {
+	req := api.RunRequest{ServerIDs: serverIDs, Variables: variables, Metadata: metadata}
 	if r.Action != nil {
 		req.ActionID = r.Action.ID
 	} else {

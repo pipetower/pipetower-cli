@@ -169,9 +169,11 @@ func newRunnableRunCommand(a *App, kind runnableKind) *cobra.Command {
 		Use:   "run <" + kind.kind.Singular + ">",
 		Short: "Run " + withArticle(kind.kind.Singular) + " on servers and follow it live",
 		Long: "Run " + withArticle(kind.kind.Singular) + " on servers and follow every step live. Servers are given by\n" +
-			"name, id or tag:<tag>, missing variables are asked for.\n\n" + followHelp,
-		Example: "  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod -s tag:web -v branch=main",
-		Args:    argOrPick(a, kind.kind.Singular),
+			"name, id or tag:<tag>, missing variables are asked for.\n\n" + metadataHelp + "\n\n" + followHelp,
+		Example: "  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod -s tag:web -v branch=main\n" +
+			"  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod --meta ticket=OPS-12 --meta-file changelog=CHANGELOG.md\n" +
+			"  pt " + kind.kind.Singular + " run \"Deploy App\" -s prod --meta-git=origin/main",
+		Args: argOrPick(a, kind.kind.Singular),
 		RunE: func(cmd *cobra.Command, argv []string) error {
 			runnable, err := resolveRunnable(cmd.Context(), a, kind, optionalArg(argv))
 			if err != nil {
@@ -209,16 +211,24 @@ func renderRunnable(r resolve.Runnable, definition definitionSteps, width int) s
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// renderVariables lists the variables needed on execution.
+// renderVariables lists the variables taken on execution.
 func renderVariables(variables []api.VariableDefinition, width int) []string {
 	if len(variables) == 0 {
 		return []string{ui.Muted.Render("   none")}
 	}
 	rows := make([][]string, len(variables))
 	for i, v := range variables {
-		rows[i] = []string{ui.Bold.Render(v.Name), ui.Muted.Render(v.Type), strings.Join(selectionValues(v), ", ")}
+		rows[i] = []string{ui.Bold.Render(v.Name), ui.Muted.Render(v.Type), required(v), strings.Join(selectionValues(v), ", ")}
 	}
-	return []string{ui.Indent(ui.Table([]string{"NAME", "TYPE", "VALUES"}, rows, width-2), "  ")}
+	return []string{ui.Indent(ui.Table([]string{"NAME", "TYPE", "REQUIRED", "VALUES"}, rows, width-2), "  ")}
+}
+
+// required tells whether a variable needs a value.
+func required(v api.VariableDefinition) string {
+	if v.Optional {
+		return ui.Faint.Render("no")
+	}
+	return "yes"
 }
 
 // renderSteps lists the steps of an action or the actions of a workflow, with what each does and
@@ -235,7 +245,7 @@ func renderSteps(steps []definitionStep, width int) []string {
 		}
 		rows[i] = []string{ui.Faint.Render(fmt.Sprint(i + 1)), ui.Bold.Render(name), ui.Muted.Render(kind), ui.Code.Render(stepSummary(step)), conditionsMark(step)}
 	}
-	return []string{ui.Indent(ui.Table([]string{"#", "STEP", "TYPE", "", "IF"}, rows, width-2), "  ")}
+	return []string{ui.Indent(ui.Table([]string{"#", "STEP", "TYPE", "", "CONDITIONS"}, rows, width-2), "  ")}
 }
 
 // stepTypeLabel turns execute_shell_script into "shell script".

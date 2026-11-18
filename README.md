@@ -63,6 +63,28 @@ pt action export "Deploy App"           # print the definition of an existing ac
 pt action delete "Deploy App"
 ```
 
+A run can carry metadata, information which Pipetower shows with the run, like the ticket it belongs
+to or a changelog:
+
+```sh
+pt workflow run "Deploy App" -s prod --meta ticket=OPS-12 --meta-file changelog=CHANGELOG.md
+```
+
+Inside a git repository, `--meta-git` collects it: the commit which is deployed and the commits since
+the last successful run on the servers.
+
+```sh
+pt workflow run "Deploy App" -s prod --meta-git               # the remote branch of your current branch
+pt workflow run "Deploy App" -s prod --meta-git=origin/main   # this ref
+```
+
+The ref is fetched from its remote first, your checkout and working tree stay as they are. The run gets
+the metadata `repository`, `branch`, `commit`, `previous_commit`, `compare` and `commits`. The new
+commits are only listed if the last successful run on each server used `--meta-git` too. After a run
+which recorded no commit, nobody knows which commits are new, so the run only gets its own commit. If the action
+or workflow has a variable `COMMIT`, it gets the commit, so the run can check out exactly what the log
+says. Make that variable optional in Pipetower and runs started elsewhere need no value for it.
+
 ## Development
 
 ```sh

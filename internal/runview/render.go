@@ -2,6 +2,7 @@ package runview
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -309,9 +310,29 @@ func Render(run api.Run, width int) string {
 	tracker.SetRun(run)
 
 	if run.Finished() {
-		return renderRun(tracker, time.Now(), "", width, modeDetailed) + "\n" + renderSummary(tracker.Run)
+		return renderRun(tracker, time.Now(), "", width, modeDetailed) + renderMetadata(run.Metadata) + "\n" + renderSummary(tracker.Run)
 	}
-	return renderRun(tracker, time.Now(), "●", width, modeLive) + "\n"
+	return renderRun(tracker, time.Now(), "●", width, modeLive) + renderMetadata(run.Metadata) + "\n"
+}
+
+// renderMetadata renders what was passed with the run below its steps: the names in their
+// order, each with its text, whose further lines stay below its first one. Nothing without metadata.
+func renderMetadata(metadata map[string]string) string {
+	if len(metadata) == 0 {
+		return ""
+	}
+	names := slices.Sorted(maps.Keys(metadata))
+	width := 0
+	for _, name := range names {
+		width = max(width, lipgloss.Width(name))
+	}
+
+	lines := []string{"", "", " " + ui.Bold.Render("Metadata")}
+	for _, name := range names {
+		pad := strings.Repeat(" ", width-lipgloss.Width(name)+2)
+		lines = append(lines, "   "+ui.Muted.Render(name)+pad+ui.Indent(metadata[name], strings.Repeat(" ", width+5))[width+5:])
+	}
+	return strings.Join(lines, "\n")
 }
 
 // renderUpcoming renders the pending steps below the status line of the full output, exactly as

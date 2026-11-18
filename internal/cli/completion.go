@@ -25,7 +25,7 @@ const completionTimeout = 5 * time.Second
 const completedRuns = 30
 
 // freeTextFlags take values which can't be completed, they complete nothing (instead of file names).
-var freeTextFlags = []string{"search", "limit", "page", "data", "url", "token"}
+var freeTextFlags = []string{"search", "limit", "page", "data", "url", "token", "meta", "meta-file", "meta-git"}
 
 // placeholder finds the argument placeholders in a command's use line: run <action> → action.
 var placeholder = regexp.MustCompile(`<([a-z]+)>`)

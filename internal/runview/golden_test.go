@@ -103,6 +103,17 @@ func TestGoldenDetailedFinishedRun(t *testing.T) {
 	golden.RequireEqual(t, ansi.Strip(Render(finishedRun(), 100)))
 }
 
+func TestGoldenDetailedRunWithMetadata(t *testing.T) {
+	run := finishedRun()
+	run.Metadata = map[string]string{
+		"commits": "ab09ade5  2026-11-17 23:07  Ada  Pin actions and workflows\n28cafe94  2026-11-17 16:09  Ada  Remove the script file",
+		"commit":  "ab09ade5820c637ac16b8726f1ecfaddb8da30c4",
+		"branch":  "main",
+	}
+
+	golden.RequireEqual(t, ansi.Strip(Render(run, 100)))
+}
+
 func TestGoldenLineLog(t *testing.T) {
 	tracker := trackedDeploy()
 	log := NewLog(tracker)

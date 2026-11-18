@@ -116,11 +116,13 @@ type Variable struct {
 	Secret bool   `json:"secret"`
 }
 
-// VariableDefinition is a variable an action or workflow needs on execution.
+// VariableDefinition is a variable an action or workflow takes on execution. It needs a value
+// unless it is optional.
 type VariableDefinition struct {
-	Name   string `json:"name"`
-	Type   string `json:"type"`
-	Values string `json:"values"`
+	Name     string `json:"name"`
+	Type     string `json:"type"`
+	Values   string `json:"values"`
+	Optional bool   `json:"optional"`
 }
 
 // Variable types.
@@ -221,16 +223,18 @@ type Template struct {
 
 // Run is one execution of an action, workflow or pipe.
 type Run struct {
-	ID          string      `json:"id"`
-	TeamID      string      `json:"team_id"`
-	Status      string      `json:"status"`
-	Executable  *Reference  `json:"executable"`
-	TriggeredBy *Person     `json:"triggered_by"`
-	Executions  []Execution `json:"executions"`
-	Runs        []string    `json:"runs"`
-	CreatedAt   *time.Time  `json:"created_at"`
-	StartedAt   *time.Time  `json:"started_at"`
-	FinishedAt  *time.Time  `json:"finished_at"`
+	ID          string     `json:"id"`
+	TeamID      string     `json:"team_id"`
+	Status      string     `json:"status"`
+	Executable  *Reference `json:"executable"`
+	TriggeredBy *Person    `json:"triggered_by"`
+	// Metadata is what was passed with the run to be shown with it, by name.
+	Metadata   map[string]string `json:"metadata"`
+	Executions []Execution       `json:"executions"`
+	Runs       []string          `json:"runs"`
+	CreatedAt  *time.Time        `json:"created_at"`
+	StartedAt  *time.Time        `json:"started_at"`
+	FinishedAt *time.Time        `json:"finished_at"`
 }
 
 // Finished tells whether the run is over.
@@ -312,6 +316,7 @@ type RunRequest struct {
 	WorkflowID string            `json:"workflow_id,omitempty"`
 	ServerIDs  []string          `json:"server_ids"`
 	Variables  map[string]string `json:"variables,omitempty"`
+	Metadata   map[string]string `json:"metadata,omitempty"`
 }
 
 // Ticket authenticates a connection to the gateway.
