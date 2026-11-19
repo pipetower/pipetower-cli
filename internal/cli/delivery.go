@@ -34,7 +34,8 @@ type delivery struct {
 
 // gitDelivery collects the delivery of --meta-git: the commit of the ref, and its commits since
 // the last successful run of the action or workflow on each server. Only if every one of these
-// runs told its commit, it is known which commits are new.
+// runs told its commit, it is known which commits are new. The repository must have these
+// commits, otherwise it is not the one which is deployed.
 func gitDelivery(ctx context.Context, a *App, runnable resolve.Runnable, servers []api.Server, flags runFlags) (*delivery, error) {
 	ref := flags.meta.git
 	if ref == "" {
@@ -52,6 +53,9 @@ func gitDelivery(ctx context.Context, a *App, runnable resolve.Runnable, servers
 		}
 		previous, err := previousCommits(ctx, a, runnable, servers)
 		if err != nil {
+			return nil, err
+		}
+		if err := repo.Require(ctx, target, previous); err != nil {
 			return nil, err
 		}
 		log, err := repo.Log(ctx, previous, target.Commit)
@@ -146,7 +150,22 @@ func previousCommits(ctx context.Context, a *App, runnable resolve.Runnable, ser
 // metaGitError explains why --meta-git could not collect the delivery.
 func metaGitError(err error, ref string) error {
 	var gitErr *gitlog.Error
+	var foreign *gitlog.ForeignCommitError
+	var fetch *gitlog.FetchError
 	switch {
+	case errors.As(err, &fetch):
+		return fault.New(fault.Problem{
+			Title:  "Git could not fetch from “" + fetch.Remote + "”",
+			Detail: fetch.Output + "\nCheck the network and your login for the repository, or run it without --meta-git.",
+			Code:   fault.ExitFailure,
+		})
+	case errors.As(err, &foreign):
+		return fault.New(fault.Problem{
+			Title: "This is not the repository which was deployed last",
+			Detail: "The last run deployed the commit " + shortCommit(foreign.Commit) + ", which " + ui.Or(foreign.Repository, "this repository") + " does not have.\n" +
+				"Run pt inside the repository which is deployed, or without --meta-git.",
+			Code: fault.ExitUsage,
+		})
 	case errors.Is(err, gitlog.ErrNoRepository):
 		return usageError("--meta-git needs a git repository", "Run pt inside the repository which is deployed.")
 	case errors.As(err, &gitErr) && ref == gitlog.Upstream:

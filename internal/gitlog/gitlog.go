@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -42,6 +43,29 @@ func (e *Error) Error() string {
 	return "git " + strings.Join(e.Args, " ") + ": " + e.Output
 }
 
+// FetchError is a remote which could not be fetched from, for example without network or login.
+type FetchError struct {
+	Remote string
+	Output string
+}
+
+// Error names the remote with what git answered.
+func (e *FetchError) Error() string {
+	return "git fetch " + e.Remote + ": " + e.Output
+}
+
+// ForeignCommitError says that the repository and its remote don't have a commit.
+type ForeignCommitError struct {
+	Commit string
+	// Repository is the web address of the remote, empty if it has none.
+	Repository string
+}
+
+// Error names the commit.
+func (e *ForeignCommitError) Error() string {
+	return "the repository does not have the commit " + e.Commit
+}
+
 // Repo is a git repository.
 type Repo struct {
 	dir string
@@ -55,6 +79,8 @@ type Target struct {
 	Branch string
 	// Commit is the full hash.
 	Commit string
+	// Remote is the remote the ref belongs to, empty for a ref without remote.
+	Remote string
 	// Repository is the web address of the remote, empty if there is none.
 	Repository string
 }
@@ -89,18 +115,63 @@ func (r Repo) Target(ctx context.Context, ref string) (Target, error) {
 		target.Ref, target.Branch = ref, ""
 	}
 
-	remote := r.remoteOf(ctx, name)
-	if remote != "" {
-		target.Branch = strings.TrimPrefix(name, remote+"/")
-		if _, err := r.git(ctx, "fetch", "--quiet", remote, target.Branch); err != nil {
+	target.Remote = r.remoteOf(ctx, name)
+	if target.Remote != "" {
+		target.Branch = strings.TrimPrefix(name, target.Remote+"/")
+		if err := r.fetch(ctx, target.Remote, target.Branch); err != nil {
 			return Target{}, err
 		}
 	}
 	if target.Commit, err = r.git(ctx, "rev-parse", "--verify", target.Ref+"^{commit}"); err != nil {
 		return Target{}, err
 	}
-	target.Repository = r.repository(ctx, remote)
+	target.Repository = r.repository(ctx, target.Remote)
 	return target, nil
+}
+
+// Require makes sure that the repository has the commits, which were delivered before the
+// target. A commit it lacks is fetched from the remote of the target, with all its branches
+// or alone. If the remote doesn't have it either, this is another repository than the one
+// the commit comes from. A remote which can't be fetched from at all is reported as that.
+// Without a remote, and for a hash which is not complete, nothing can be fetched, so nothing
+// is required.
+func (r Repo) Require(ctx context.Context, target Target, commits []string) error {
+	for _, commit := range commits {
+		if target.Remote == "" || !fullHash.MatchString(commit) || r.has(ctx, commit) {
+			continue
+		}
+		if err := r.fetch(ctx, target.Remote); err != nil {
+			return err
+		}
+		if r.has(ctx, commit) {
+			continue
+		}
+		// the remote just answered, so if it refuses the commit now, it doesn't have it
+		if err := r.fetch(ctx, target.Remote, commit); err != nil || !r.has(ctx, commit) {
+			return &ForeignCommitError{Commit: commit, Repository: target.Repository}
+		}
+	}
+	return nil
+}
+
+// fetch fetches the refs from the remote, all its branches if none is given.
+func (r Repo) fetch(ctx context.Context, remote string, refs ...string) error {
+	_, err := r.git(ctx, append([]string{"fetch", "--quiet", remote}, refs...)...)
+
+	var gitErr *Error
+	if errors.As(err, &gitErr) {
+		return &FetchError{Remote: remote, Output: gitErr.Output}
+	}
+	return err
+}
+
+// fullHash is a complete commit hash, which a remote can be asked for.
+var fullHash = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
+// has tells whether the repository has the commit.
+func (r Repo) has(ctx context.Context, commit string) bool {
+	_, err := r.git(ctx, "cat-file", "-e", commit+"^{commit}")
+	return err == nil
 }
 
 // Log lists the commits of the target which the previous commits don't have: those since the
@@ -165,7 +236,7 @@ func (r Repo) base(ctx context.Context, previous []string) string {
 		return ""
 	}
 	for _, commit := range previous {
-		if _, err := r.git(ctx, "cat-file", "-e", commit+"^{commit}"); err != nil {
+		if !r.has(ctx, commit) {
 			return ""
 		}
 	}

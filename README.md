@@ -81,7 +81,9 @@ pt workflow run "Deploy App" -s prod --meta-git=origin/main   # this ref
 The ref is fetched from its remote first, your checkout and working tree stay as they are. The run gets
 the metadata `repository`, `branch`, `commit`, `previous_commit`, `compare` and `commits`. The new
 commits are only listed if the last successful run on each server used `--meta-git` too. After a run
-which recorded no commit, nobody knows which commits are new, so the run only gets its own commit. If the action
+which recorded no commit, nobody knows which commits are new, so the run only gets its own commit.
+If the repository you are in does not have the commit which was deployed last, also not on its remote,
+`pt` stops before the run starts: it is another repository than the one which is deployed. If the action
 or workflow has a variable `COMMIT`, it gets the commit, so the run can check out exactly what the log
 says. Make that variable optional in Pipetower and runs started elsewhere need no value for it.
 

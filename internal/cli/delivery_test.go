@@ -156,6 +156,36 @@ func TestMetadataFlagsWinOverMetaGit(t *testing.T) {
 	}
 }
 
+func TestMetaGitStopsInARepositoryWhichDoesNotHaveTheCommitDeployedLast(t *testing.T) {
+	clone, _ := clonedRepository(t)
+	other, _ := clonedRepository(t)
+	foreign := commit(t, other, "Of another project")
+	fake := &runAPI{previousRuns: `{"id":"r8","status":"successful","metadata":{"commit":"` + foreign + `"}}`}
+
+	out := fake.start(t, clone, "action", "run", "Deploy", "-s", "web-01", "--detach", "--meta-git=origin/main")
+
+	if out.code != fault.ExitUsage || fake.started.ActionID != "" {
+		t.Errorf("exit %d, started %+v", out.code, fake.started)
+	}
+	for _, want := range []string{"This is not the repository which was deployed last", "the commit " + foreign[:8], "or without --meta-git"} {
+		if !strings.Contains(out.stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, out.stderr)
+		}
+	}
+}
+
+func TestMetaGitTellsWhenTheRemoteCanNotBeFetchedFrom(t *testing.T) {
+	clone, _ := clonedRepository(t)
+	git(t, clone, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
+	fake := &runAPI{}
+
+	out := fake.start(t, clone, "action", "run", "Deploy", "-s", "web-01", "--detach", "--meta-git=origin/main")
+
+	if out.code != fault.ExitFailure || fake.started.ActionID != "" || !strings.Contains(out.stderr, "Git could not fetch from “origin”") || strings.Contains(out.stderr, "not the repository") {
+		t.Errorf("exit %d, started %+v, stderr:\n%s", out.code, fake.started, out.stderr)
+	}
+}
+
 func TestMetaGitNeedsARepositoryAndAKnownRef(t *testing.T) {
 	clone, _ := clonedRepository(t)
 	cases := map[string]struct {

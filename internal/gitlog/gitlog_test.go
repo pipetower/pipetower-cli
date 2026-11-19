@@ -123,6 +123,89 @@ func TestTargetOfAnUnknownRefFails(t *testing.T) {
 	}
 }
 
+func TestRequireFetchesACommitOfAnotherBranchOrWithoutBranch(t *testing.T) {
+	origin := newRepository(t)
+	origin.commit("First")
+	origin.git("config", "uploadpack.allowAnySHA1InWant", "true")
+	clone := origin.clone()
+	origin.git("checkout", "--quiet", "-b", "preview")
+	onBranch := origin.commit("On a branch the clone never fetched")
+	origin.git("checkout", "--quiet", "--detach")
+	withoutBranch := origin.commit("On no branch, like after a branch was deleted")
+	origin.git("checkout", "--quiet", "main")
+	repo := clone.open()
+	target, err := repo.Target(context.Background(), "origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repo.Require(context.Background(), target, []string{onBranch, withoutBranch}); err != nil {
+		t.Errorf("err = %v", err)
+	}
+	if log, err := repo.Log(context.Background(), []string{onBranch}, target.Commit); err != nil || log.Previous == "" {
+		t.Errorf("the fetched commit must be usable: log = %+v, err = %v", log, err)
+	}
+}
+
+func TestRequireRejectsACommitOfAnotherRepository(t *testing.T) {
+	origin := newRepository(t)
+	origin.commit("First")
+	clone := origin.clone()
+	other := newRepository(t)
+	foreign := other.commit("Of another project")
+	repo := clone.open()
+	target, err := repo.Target(context.Background(), "origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var foreignErr *ForeignCommitError
+	if err := repo.Require(context.Background(), target, []string{target.Commit, foreign}); !errors.As(err, &foreignErr) || foreignErr.Commit != foreign {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestARemoteWhichCanNotBeFetchedFromIsReportedAsThat(t *testing.T) {
+	origin := newRepository(t)
+	origin.commit("First")
+	clone := origin.clone()
+	repo := clone.open()
+	target, err := repo.Target(context.Background(), "origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone"))
+
+	var fetchErr *FetchError
+	if _, err := repo.Target(context.Background(), "origin/main"); !errors.As(err, &fetchErr) || fetchErr.Remote != "origin" {
+		t.Errorf("target: err = %v", err)
+	}
+	if err := repo.Require(context.Background(), target, []string{"0000000000000000000000000000000000000000"}); !errors.As(err, &fetchErr) {
+		t.Errorf("require: err = %v", err)
+	}
+}
+
+func TestRequireChecksNothingWithoutARemoteOrACompleteHash(t *testing.T) {
+	origin := newRepository(t)
+	first := origin.commit("First")
+	clone := origin.clone()
+	local, err := origin.open().Target(context.Background(), "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote, err := clone.open().Target(context.Background(), "origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := origin.open().Require(context.Background(), local, []string{"0000000000000000000000000000000000000000"}); err != nil {
+		t.Errorf("without a remote: err = %v", err)
+	}
+	if err := clone.open().Require(context.Background(), remote, []string{"abc1234", first}); err != nil {
+		t.Errorf("with a short hash: err = %v", err)
+	}
+}
+
 func TestLogListsTheCommitsSinceThePreviousOne(t *testing.T) {
 	repo := newRepository(t)
 	first := repo.commit("First")
